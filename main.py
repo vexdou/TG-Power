@@ -1,12 +1,13 @@
 import asyncio
-import os
-import threading
-import signal
 import logging
+import os
+import signal
+import threading
 from flask import Flask, jsonify
 
-from main_bot import main_app, startup
-from bot_manager import init_all_bots
+import config
+from database import init_db
+from main_bot import main_app
 
 
 # ============================================================
@@ -16,6 +17,7 @@ from bot_manager import init_all_bots
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    force=True,
 )
 
 logger = logging.getLogger("TG-POWER")
@@ -27,23 +29,33 @@ logger = logging.getLogger("TG-POWER")
 
 web_app = Flask(__name__)
 
+TELEGRAM_ONLINE = False
+DATABASE_ONLINE = False
+MANAGED_BOTS_ONLINE = False
+
 
 @web_app.get("/")
 def home():
     return jsonify({
-        "ok": True,
         "service": "TG-Power",
         "status": "online",
+        "telegram": TELEGRAM_ONLINE,
+        "database": DATABASE_ONLINE,
+        "managed_bots": MANAGED_BOTS_ONLINE,
     })
 
 
 @web_app.get("/health")
 def health():
+    ok = TELEGRAM_ONLINE and DATABASE_ONLINE
+
     return jsonify({
-        "ok": True,
+        "ok": ok,
         "service": "TG-Power",
-        "telegram": "running",
-    })
+        "telegram": TELEGRAM_ONLINE,
+        "database": DATABASE_ONLINE,
+        "managed_bots": MANAGED_BOTS_ONLINE,
+    }), (200 if ok else 503)
 
 
 @web_app.get("/healthz")
@@ -53,20 +65,17 @@ def healthz():
     })
 
 
-def run_flask():
+def run_web_server():
     """
-    Render health/web server.
-
-    Telegram bot itself runs in the main asyncio event loop.
-    Flask is only used for Render health checks.
+    Render health server.
+    This server does NOT control the Telegram event loop.
     """
 
     port = int(os.getenv("PORT", "10000"))
 
-    logger.info("🌐 Starting health server on port %s", port)
+    logger.info("🌐 Starting Render health server on port %s", port)
 
     try:
-        # Disable Flask reloader because it can start the application twice.
         web_app.run(
             host="0.0.0.0",
             port=port,
@@ -80,148 +89,210 @@ def run_flask():
 
 
 # ============================================================
-# STARTUP
+# TELEGRAM / SERVICES
 # ============================================================
 
-async def run_services():
-    """
-    Start the complete TG-Power system.
-
-    Startup order:
-
-    1. MongoDB
-    2. Main Telegram Bot
-    3. Managed Bots
-    4. Keep asyncio loop alive
-    """
+async def start_services():
+    global TELEGRAM_ONLINE
+    global DATABASE_ONLINE
+    global MANAGED_BOTS_ONLINE
 
     logger.info("")
-    logger.info("========================================")
-    logger.info("        TG-POWER STARTING")
-    logger.info("========================================")
+    logger.info("==============================================")
+    logger.info("             TG-POWER STARTING")
+    logger.info("==============================================")
+
+    # --------------------------------------------------------
+    # CONFIGURATION CHECK
+    # --------------------------------------------------------
+
+    logger.info("🔍 Checking configuration...")
+
+    required = {
+        "BOT_TOKEN": getattr(config, "BOT_TOKEN", None),
+        "API_ID": getattr(config, "API_ID", None),
+        "API_HASH": getattr(config, "API_HASH", None),
+        "MONGO_URI": getattr(config, "MONGO_URI", None),
+    }
+
+    missing = [
+        name
+        for name, value in required.items()
+        if value is None or value == "" or value == 0
+    ]
+
+    if missing:
+        logger.error(
+            "❌ Missing required environment variables: %s",
+            ", ".join(missing),
+        )
+        raise RuntimeError(
+            "Missing required configuration: "
+            + ", ".join(missing)
+        )
+
+    logger.info("✅ Configuration looks valid.")
+
+    # --------------------------------------------------------
+    # DATABASE
+    # --------------------------------------------------------
+
+    logger.info("🗄️ Connecting to MongoDB...")
 
     try:
+        await init_db()
 
-        # ----------------------------------------------------
-        # DATABASE
-        # ----------------------------------------------------
+        DATABASE_ONLINE = True
 
-        logger.info("🗄️ Initializing database...")
-
-        await startup()
-
-        logger.info("🗄️ Database initialization completed.")
-
-        # ----------------------------------------------------
-        # MANAGED BOTS
-        # ----------------------------------------------------
-
-        logger.info("🤖 Loading managed bots...")
-
-        try:
-            await init_all_bots()
-            logger.info("🤖 Managed bot manager initialized.")
-        except Exception:
-            logger.exception("⚠️ Managed bot initialization failed.")
-            logger.warning(
-                "⚠️ Main Bot will continue running even if managed bots failed."
-            )
-
-        # ----------------------------------------------------
-        # MAIN TELEGRAM BOT
-        # ----------------------------------------------------
-
-        logger.info("📡 Connecting Main Telegram Bot...")
-
-        try:
-            await main_app.start()
-
-        except Exception:
-            logger.exception("❌ Main Telegram Bot failed to start.")
-            raise
-
-        # ----------------------------------------------------
-        # VERIFY BOT IDENTITY
-        # ----------------------------------------------------
-
-        try:
-            me = await main_app.get_me()
-
-            logger.info("")
-            logger.info("========================================")
-            logger.info("       TELEGRAM CONNECTION OK")
-            logger.info("========================================")
-            logger.info("🤖 Bot Name: %s", me.first_name)
-            logger.info("👤 Username: @%s", me.username)
-            logger.info("🆔 Bot ID: %s", me.id)
-            logger.info("📡 Telegram Updates: ACTIVE")
-            logger.info("========================================")
-
-        except Exception:
-            logger.exception(
-                "⚠️ Bot started but get_me() verification failed."
-            )
-
-        # ----------------------------------------------------
-        # SYSTEM ONLINE
-        # ----------------------------------------------------
-
-        logger.info("")
-        logger.info("========================================")
-        logger.info("          TG-POWER ONLINE")
-        logger.info("========================================")
-        logger.info("🟢 Main Bot: ONLINE")
-        logger.info("🟢 Database: INITIALIZED")
-        logger.info("🟢 Bot Manager: ONLINE")
-        logger.info("🟢 Health Server: ONLINE")
-        logger.info("========================================")
-        logger.info("")
-
-        # ----------------------------------------------------
-        # KEEP ASYNCIO LOOP ALIVE
-        # ----------------------------------------------------
-
-        await asyncio.Event().wait()
-
-    except asyncio.CancelledError:
-
-        logger.info("🛑 Service shutdown requested.")
-
-        raise
-
-    except KeyboardInterrupt:
-
-        logger.info("🛑 Keyboard interrupt received.")
+        logger.info("🟢 MongoDB connected successfully.")
 
     except Exception:
+        DATABASE_ONLINE = False
 
-        logger.exception("❌ TG-Power startup/runtime failure.")
+        logger.exception("❌ MongoDB initialization failed.")
 
         raise
 
-    finally:
+    # --------------------------------------------------------
+    # MAIN TELEGRAM BOT
+    # --------------------------------------------------------
 
-        # ----------------------------------------------------
-        # SHUTDOWN MAIN BOT
-        # ----------------------------------------------------
+    logger.info("🤖 Connecting Main Telegram Bot...")
 
-        try:
+    try:
+        await main_app.start()
 
-            if main_app.is_connected:
+        me = await main_app.get_me()
 
-                logger.info("🔴 Stopping Main Telegram Bot...")
+        TELEGRAM_ONLINE = True
 
-                await main_app.stop()
+        logger.info("")
+        logger.info("==============================================")
+        logger.info("        MAIN TELEGRAM BOT CONNECTED")
+        logger.info("==============================================")
+        logger.info("🤖 Name: %s", me.first_name or "")
+        logger.info("👤 Username: @%s", me.username or "")
+        logger.info("🆔 ID: %s", me.id)
+        logger.info("📡 Telegram updates: ACTIVE")
+        logger.info("==============================================")
 
-                logger.info("✅ Main Telegram Bot stopped.")
+    except Exception as exc:
 
-        except Exception:
+        TELEGRAM_ONLINE = False
 
-            logger.exception(
-                "⚠️ Error while stopping Main Telegram Bot."
-            )
+        logger.exception(
+            "❌ MAIN TELEGRAM BOT FAILED TO START: %s",
+            exc,
+        )
 
-        logger.info("🛑 TG-Power shutdown completed.")
+        raise
+
+    # --------------------------------------------------------
+    # MANAGED BOT MANAGER
+    # --------------------------------------------------------
+
+    logger.info("🤖 Starting Managed Bot Manager...")
+
+    try:
+        from bot_manager import init_all_bots
+
+        await init_all_bots()
+
+        MANAGED_BOTS_ONLINE = True
+
+        logger.info(
+            "🟢 Managed Bot Manager initialized successfully."
+        )
+
+    except Exception as exc:
+
+        MANAGED_BOTS_ONLINE = False
+
+        # Important:
+        # Main Bot should remain online even if one managed bot
+        # has a bad token.
+        logger.exception(
+            "⚠️ Managed Bot Manager failed: %s",
+            exc,
+        )
+
+    # --------------------------------------------------------
+    # FINAL STATUS
+    # --------------------------------------------------------
+
+    logger.info("")
+    logger.info("==============================================")
+    logger.info("              TG-POWER ONLINE")
+    logger.info("==============================================")
+    logger.info(
+        "🗄️ MongoDB:       %s",
+        "🟢 ONLINE" if DATABASE_ONLINE else "🔴 OFFLINE",
+    )
+    logger.info(
+        "🤖 Main Bot:      %s",
+        "🟢 ONLINE" if TELEGRAM_ONLINE else "🔴 OFFLINE",
+    )
+    logger.info(
+        "🤖 Bot Manager:   %s",
+        "🟢 ONLINE" if MANAGED_BOTS_ONLINE else "🟡 LIMITED",
+    )
+    logger.info("🌐 Health Server:  🟢 ONLINE")
+    logger.info("==============================================")
+    logger.info("")
+
+    # Keep asyncio loop alive.
+    await asyncio.Event().wait()
+
+
+# ============================================================
+# SHUTDOWN
+# ============================================================
+
+async def shutdown():
+    global TELEGRAM_ONLINE
+
+    logger.info("🛑 Shutdown requested.")
+
+    try:
+        from bot_manager import active_bots, manager_lock
+
+        async with manager_lock:
+            bots = list(active_bots.items())
+
+        for username, app in bots:
+            try:
+                if app.is_connected:
+                    logger.info(
+                        "🔴 Stopping managed bot @%s",
+                        username,
+                    )
+                    await app.stop()
+            except Exception:
+                logger.exception(
+                    "⚠️ Failed stopping @%s",
+                    username,
+                )
+
+        active_bots.clear()
+
+    except Exception:
+        logger.exception(
+            "⚠️ Managed bot shutdown error."
+        )
+
+    try:
+        if main_app.is_connected:
+            logger.info("🔴 Stopping Main Telegram Bot...")
+            await main_app.stop()
+
+    except Exception:
+        logger.exception(
+            "⚠️ Main Bot shutdown error."
+        )
+
+    TELEGRAM_ONLINE = False
+
+    logger.info("✅ TG-Power shutdown completed.")
 
 
 # ============================================================
@@ -229,69 +300,58 @@ async def run_services():
 # ============================================================
 
 def install_signal_handlers(loop):
-    """
-    Gracefully stop asyncio application on SIGTERM/SIGINT.
-
-    Render normally sends SIGTERM during deployment/restart.
-    """
-
-    def shutdown_signal():
-
+    def request_shutdown():
         logger.info(
-            "🛑 Shutdown signal received from operating system."
+            "🛑 Operating system shutdown signal received."
         )
 
         for task in asyncio.all_tasks(loop):
-
-            if task is not asyncio.current_task(loop):
-
+            if not task.done():
                 task.cancel()
 
     try:
-
         loop.add_signal_handler(
             signal.SIGTERM,
-            shutdown_signal,
+            request_shutdown,
         )
 
         loop.add_signal_handler(
             signal.SIGINT,
-            shutdown_signal,
+            request_shutdown,
         )
 
     except (NotImplementedError, RuntimeError):
-
-        # Some operating systems do not support
-        # asyncio signal handlers.
         logger.warning(
-            "⚠️ Async signal handlers are not available."
+            "⚠️ Async signal handlers are unavailable."
         )
 
 
 # ============================================================
-# MAIN ENTRY POINT
+# MAIN
 # ============================================================
 
 def main():
 
-    logger.info("🚀 Starting TG-Power process...")
+    logger.info("🚀 TG-Power process starting...")
 
     # --------------------------------------------------------
-    # START RENDER HEALTH SERVER
+    # START WEB SERVER
     # --------------------------------------------------------
 
-    flask_thread = threading.Thread(
-        target=run_flask,
+    web_thread = threading.Thread(
+        target=run_web_server,
         name="render-health-server",
         daemon=True,
     )
 
-    flask_thread.start()
+    web_thread.start()
 
-    logger.info("🌐 Render health server thread started.")
+    logger.info(
+        "🌐 Render health server thread started."
+    )
 
     # --------------------------------------------------------
-    # CREATE ASYNCIO LOOP
+    # ASYNCIO LOOP
     # --------------------------------------------------------
 
     loop = asyncio.new_event_loop()
@@ -300,46 +360,52 @@ def main():
 
     install_signal_handlers(loop)
 
-    # --------------------------------------------------------
-    # RUN TELEGRAM SERVICES
-    # --------------------------------------------------------
-
     try:
 
         loop.run_until_complete(
-            run_services()
+            start_services()
+        )
+
+    except asyncio.CancelledError:
+
+        logger.info(
+            "🛑 Main asyncio task cancelled."
         )
 
     except KeyboardInterrupt:
 
-        logger.info("🛑 Keyboard interrupt.")
-
-    except asyncio.CancelledError:
-
-        logger.info("🛑 Async tasks cancelled.")
+        logger.info(
+            "🛑 Keyboard interrupt received."
+        )
 
     except Exception:
 
         logger.exception(
-            "❌ TG-Power stopped because of an unexpected error."
+            "❌ TG-Power stopped because of a fatal error."
         )
+
+        # Let Render know that the process really failed.
+        raise
 
     finally:
 
-        # ----------------------------------------------------
-        # CANCEL REMAINING TASKS
-        # ----------------------------------------------------
+        try:
+            loop.run_until_complete(
+                shutdown()
+            )
+        except Exception:
+            logger.exception(
+                "⚠️ Shutdown cleanup failed."
+            )
 
         try:
 
             pending = asyncio.all_tasks(loop)
 
             for task in pending:
-
                 task.cancel()
 
             if pending:
-
                 loop.run_until_complete(
                     asyncio.gather(
                         *pending,
@@ -348,35 +414,23 @@ def main():
                 )
 
         except Exception:
-
             logger.exception(
-                "⚠️ Error while cleaning asyncio tasks."
+                "⚠️ Failed cancelling pending tasks."
             )
-
-        # ----------------------------------------------------
-        # CLOSE LOOP
-        # ----------------------------------------------------
 
         try:
-
             loop.close()
-
         except Exception:
-
             logger.exception(
-                "⚠️ Error while closing asyncio loop."
+                "⚠️ Failed closing asyncio loop."
             )
 
-        logger.info("")
-        logger.info("========================================")
-        logger.info("          TG-POWER STOPPED")
-        logger.info("========================================")
+    logger.info("🛑 TG-Power process stopped.")
 
 
 # ============================================================
-# EXECUTE
+# ENTRY POINT
 # ============================================================
 
 if __name__ == "__main__":
-
     main()
