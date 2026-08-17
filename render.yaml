@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: tg-power
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: USER_SESSION
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: RENDER_URL
+        sync: false
+      - key: ENABLE_BOTFATHER_AUTOMATION
+        value: "true"
