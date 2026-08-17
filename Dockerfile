@@ -1,9 +1,7 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Install FFmpeg and system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -14,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+RUN mkdir -p /app/downloads
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 10000
 
 CMD ["python", "main.py"]
