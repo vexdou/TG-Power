@@ -1,48 +1,60 @@
-import re
+import os
 import asyncio
+import re
 from pyrogram import Client
-import config
 
-creator_app = None
-
-if config.USER_SESSION:
-    creator_app = Client("bot_creator_session", api_id=config.API_ID, api_hash=config.API_HASH, session_string=config.USER_SESSION)
+API_ID = int(os.environ.get("API_ID", 123456))
+API_HASH = os.environ.get("API_HASH", "")
+USER_SESSION = os.environ.get("USER_SESSION", "")
 
 async def create_bot_via_botfather(bot_name: str, bot_username: str):
-    """
-    Userbot-kani wuxuu si toos ah fariin u siinayaa @BotFather
-    si uu bot cusub ugu dhasho oo uu token-ka u soo nala soo saaro.
-    """
-    if not creator_app:
-        raise Exception("USER_SESSION is not configured in Environment Variables.")
+    # Dhisida Client cusub oo in-memory ah
+    user_bot = Client(
+        "user_bot_session",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=USER_SESSION,
+        in_memory=True
+    )
 
-    async with creator_app:
-        # Send /newbot to BotFather
-        await creator_app.send_message("BotFather", "/newbot")
+    try:
+        # Hubi haddii uusan mar hore xiriirsanayn
+        if not user_bot.is_connected:
+            await user_bot.start()
+
+        # 1. U dir /newbot BotFather
+        await user_bot.send_message("BotFather", "/newbot")
         await asyncio.sleep(1.5)
 
-        # Send Bot Display Name
-        await creator_app.send_message("BotFather", bot_name)
+        # 2. U dir Magaca Bot-ka
+        await user_bot.send_message("BotFather", bot_name)
         await asyncio.sleep(1.5)
 
-        # Send Bot Username (must end in 'bot')
-        if not bot_username.lower().endswith("bot"):
-            bot_username += "_bot"
+        # 3. U dir Username-ka Bot-ka
+        await user_bot.send_message("BotFather", bot_username)
+        await asyncio.sleep(2)
 
-        await creator_app.send_message("BotFather", bot_username)
-        await asyncio.sleep(2.5)
-
-        # Get latest message from BotFather
-        async for msg in creator_app.get_chat_history("BotFather", limit=1):
-            text = msg.text or ""
-            # Extract API Token via Regex
-            match = re.search(r"(\d+:[A-Za-z0-9_-]{35})", text)
-            if match:
-                token = match.group(1)
-                return token, bot_username
+        # 4. Ka noqoshada iyo akhri fariinta ugu dambeysay ee BotFather
+        async for message in user_bot.get_chat_history("BotFather", limit=1):
+            text = message.text or ""
+            
+            # Haddii token-kii la helay
+            if "Use this token" in text or "API token" in text:
+                match = re.search(r"(\d+:[A-Za-z0-9_-]+)", text)
+                if match:
+                    token = match.group(1)
+                    return token, bot_username
+                else:
+                    raise Exception("BotFather wuxuu soo diray fariin aan Token lahayn!")
+            
+            elif "Sorry, this username is taken" in text:
+                raise Exception("Username-kan waa lagu daahaday (Taken), mid kale dooro!")
+            elif "Sorry, too many bots" in text:
+                raise Exception("Akoonkaaga BotFather wuxuu gaaray xadkii ugu sareeyay ee bot-yada!")
             else:
-                if "sorry" in text.lower() or "taken" in text.lower():
-                    raise Exception("Username-kan waa mid hore loo qaatay ama waa maadi. Isku day kan kale.")
-                raise Exception(f"BotFather Error: {text}")
+                raise Exception(f"BotFather Error: {text[:50]}...")
 
-    raise Exception("Fashil ayaa ka dhacay sameynta bot-ka.")
+    finally:
+        # Marka ay shaqadu dhammato si nadiif ah u xir xiriirka
+        if user_bot.is_connected:
+            await user_bot.stop()
