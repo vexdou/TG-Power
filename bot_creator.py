@@ -1,51 +1,62 @@
-import os
 import asyncio
 import re
 from pyrogram import Client
+import config
 
-API_ID = int(os.environ.get("API_ID", 123456))
-API_HASH = os.environ.get("API_HASH", "")
-USER_SESSION = os.environ.get("USER_SESSION", "")
+TOKEN_RE = re.compile(r"(\d+:[A-Za-z0-9_-]{20,})")
 
 async def create_bot_via_botfather(bot_name: str, bot_username: str):
-    # no_updates=True wuxuu ka hortagayaa cillada 'attached to a different loop'
-    app = Client(
-        "user_bot_session",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=USER_SESSION,
-        in_memory=True,
-        no_updates=True
-    )
+    """
+    Creates a bot by automating the BotFather conversation through a
+    user session. This requires API_ID, API_HASH and USER_SESSION.
 
+    Telegram does not expose bot creation as a normal Bot API method.
+    Therefore this is the only part of the system that uses the user
+    session. Keep USER_SESSION private and never expose it to bot owners.
+    """
+    if not config.ENABLE_BOTFATHER_AUTOMATION:
+        raise RuntimeError("BotFather automation is disabled.")
+    if not config.USER_SESSION:
+        raise RuntimeError("USER_SESSION is required for automatic bot creation.")
+
+    bot_name = bot_name.strip()
+    bot_username = bot_username.strip().lstrip("@")
+    if not bot_name or len(bot_name) > 64:
+        raise ValueError("Bot name must be between 1 and 64 characters.")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,30}bot", bot_username, re.I):
+        raise ValueError("Bot username must end with 'bot' and contain only letters, numbers and underscores.")
+
+    app = Client(
+        "bot_creator_session",
+        api_id=config.API_ID,
+        api_hash=config.API_HASH,
+        session_string=config.USER_SESSION,
+        in_memory=True,
+        no_updates=True,
+    )
     await app.start()
     try:
-        # 1. U dir /newbot BotFather
         await app.send_message("BotFather", "/newbot")
-        await asyncio.sleep(1.5)
-
-        # 2. U dir Magaca Bot-ka
+        await asyncio.sleep(1.2)
         await app.send_message("BotFather", bot_name)
-        await asyncio.sleep(1.5)
-
-        # 3. U dir Username-ka Bot-ka
+        await asyncio.sleep(1.2)
         await app.send_message("BotFather", bot_username)
-        await asyncio.sleep(2)
+        await asyncio.sleep(2.0)
 
-        # 4. Akhri fariinta ugu dambeysay ee BotFather
-        async for message in app.get_chat_history("BotFather", limit=1):
-            text = message.text or ""
-            
-            if "Use this token" in text or "API token" in text:
-                match = re.search(r"(\d+:[A-Za-z0-9_-]+)", text)
-                if match:
-                    return match.group(1), bot_username
-                raise Exception("BotFather wuxuu soo diray fariin aan Token lahayn!")
-            elif "Sorry, this username is taken" in text:
-                raise Exception("Username-kan waa lagu daahaday (Taken), mid kale dooro!")
-            elif "Sorry, too many bots" in text:
-                raise Exception("Akoonkaaga BotFather wuxuu gaaray xadkii ugu sareeyay!")
-            else:
-                raise Exception(f"BotFather Error: {text[:60]}")
+        message = None
+        async for item in app.get_chat_history("BotFather", limit=3):
+            message = item
+            text = item.text or ""
+            match = TOKEN_RE.search(text)
+            if match:
+                return match.group(1), bot_username
+            if "too many bots" in text.lower():
+                raise RuntimeError("BotFather says this account has reached its bot limit.")
+            if "taken" in text.lower():
+                raise RuntimeError("That bot username is already taken.")
+            if "invalid" in text.lower():
+                raise RuntimeError(f"BotFather rejected the username: {text[:300]}")
+
+        raise RuntimeError(f"BotFather did not return a token. Last response: {(message.text if message else '')[:300]}")
     finally:
         await app.stop()
