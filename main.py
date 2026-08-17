@@ -207,6 +207,8 @@ def api_create_bot():
         return jsonify({"ok": True, "username": final_username})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
+    finally:
+        loop.close()
 
 # ==========================================
 # 4. START SERVER & MAIN BOT
