@@ -40,8 +40,4 @@ class DynamicBotManager:
             del self.running_bots[bot_id]
             logger.info(f"Bot stopped: {bot_id}")
 
-    async def restart_bot_instance(self, bot_id: int, token: str):
-        await self.stop_bot_instance(bot_id)
-        return await self.start_bot_instance(bot_id, token)
-
 bot_manager = DynamicBotManager()
