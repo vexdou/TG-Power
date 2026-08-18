@@ -1,11 +1,10 @@
 import asyncio
 import logging
-from config import Config
 from database import db
 from bot_manager import bot_manager
 from main_bot import main_bot
 
-# Habaynta Log-gaga nidaamka
+# Logger configuration
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -19,7 +18,7 @@ async def main():
     logger.info("Initializing Database...")
     await db.init_db()
 
-    # 2. Start Main SaaS Controller Bot (Async Non-blocking Mode)
+    # 2. Start Main SaaS Controller Bot (Non-blocking)
     logger.info("Starting Main SaaS Controller Bot...")
     await main_bot.start_bot()
 
@@ -29,7 +28,7 @@ async def main():
 
     logger.info("✅ TG-Power Platform is FULLY ACTIVE and listening!")
 
-    # Loop-ka guud oo furan si uusan nidaamku u damin, bot-yaduna si xfree ah fariimaha uga jawaabaan
+    # Keep loop running infinitely without blocking background tasks
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
