@@ -1,14 +1,39 @@
 import logging
-import re
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+import time
+import json
+import httpx
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+    Application, CommandHandler, MessageHandler, filters, ContextTypes
 )
 from config import Config
 from database import db
 from bot_manager import bot_manager
 
 logger = logging.getLogger(__name__)
+
+def main_keyboard():
+    # Telegram Native Request Managed Bot Button Keyboard
+    return {
+        "keyboard": [
+            [
+                {
+                    "text": "➕ Create New Bot",
+                    "request_managed_bot": {
+                        "request_id": int(time.time()),
+                        "suggested_name": "My Downloader Bot",
+                        "suggested_username": "MyDownloaderBot"
+                    }
+                }
+            ],
+            [
+                {"text": "🤖 My Bots"},
+                {"text": "ℹ️ Help"}
+            ]
+        ],
+        "resize_keyboard": True,
+        "is_persistent": True
+    }
 
 class MainSaaSBot:
     def __init__(self):
@@ -17,10 +42,8 @@ class MainSaaSBot:
 
     def _setup_handlers(self):
         self.app.add_handler(CommandHandler("start", self.start_command))
-        self.app.add_handler(CommandHandler("mybots", self.my_bots_command))
-        self.app.add_handler(CommandHandler("admin", self.admin_command))
-        self.app.add_handler(CallbackQueryHandler(self.handle_callbacks))
-        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_token_input))
+        self.app.add_handler(MessageHandler(filters.StatusUpdate.MANAGED_BOT_CREATED, self.handle_managed_bot_created))
+        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_messages))
         self.app.add_error_handler(self.error_handler)
 
     async def start_bot(self):
@@ -29,111 +52,99 @@ class MainSaaSBot:
         await self.app.start()
         await self.app.updater.start_polling(drop_pending_updates=True)
         bot_me = await self.app.bot.get_me()
-        logger.info(f"👑 Main SaaS Bot Started: @{bot_me.username}")
+        logger.info(f"👑 Main Managed SaaS Bot Online: @{bot_me.username}")
+
+    async def get_managed_bot_token(self, bot_id: int) -> str:
+        """Kuxirida Telegram API si loogu soo saaro Managed Bot Token"""
+        url = f"https://api.telegram.org/bot{Config.BOT_TOKEN}/getManagedBotToken"
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, json={"user_id": bot_id}, timeout=10.0)
+                res = response.json()
+                if res.get("ok"):
+                    return res["result"]
+            except Exception as e:
+                logger.error(f"Error fetching managed bot token: {e}")
+        return None
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        keyboard = [
-            [InlineKeyboardButton("➕ Create Downloader Bot", callback_data="create_bot")],
-            [InlineKeyboardButton("🤖 My Bots", callback_data="my_bots"), InlineKeyboardButton("📊 System Stats", callback_data="system_stats")]
-        ]
+        user = update.effective_user
         text = (
-            "👋 **Soo dhawoow TG-Power Platform!**\n\n"
-            "Muuqaal-soo-dejiye (Downloader Bot) kuu gaar ah halkan ka samayso.\n\n"
-            "👉 Taabo **➕ Create Downloader Bot** si aad u bilaawdo."
+            f"🤖 **BOT BUILDER PLATFORM**\n\n"
+            f"Soo dhawoow **{user.first_name}** 👋\n\n"
+            f"Waxaad halkan ka abuuri kartaa downloader bot kuuu gaar ah oo toos u shaqeeya iyadoon loo baahnayn Token.\n\n"
+            f"Taabo **➕ Create New Bot** si aad Telegram gudaheeda uga abuurto."
         )
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    async def my_bots_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        cursor = db.bots.find({"owner_id": user_id})
-        user_bots = await cursor.to_list(length=None)
-
-        if not user_bots:
-            await update.message.reply_text("❌ Wax bot ah oo aad samaysatay mawaad laha. Taabo /start si aad u abuurto.")
-            return
-
-        msg = "🤖 **BOT-YADAADA:**\n\n"
-        for b in user_bots:
-            msg += f"• **Bot ID:** `{b['bot_id']}` | Status: `{b['status']}`\n"
-        await update.message.reply_text(msg, parse_mode="Markdown")
-
-    async def handle_token_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = update.message.text.strip()
-        user_id = update.effective_user.id
-
-        # Hubi in qoraalku yahay Telegram Bot Token format (e.g. 123456789:ABCdefgh...)
-        token_pattern = r"^\d+:[A-Za-z0-9_-]+$"
-        if not re.match(token_pattern, text):
-            await update.message.reply_text("❌ Token khaldan! Fadlan soo dir Bot Token sax ah oo ka soo muuqda BotFather.")
-            return
-
-        status_msg = await update.message.reply_text("⏳ **Hubinta Token-ka iyo kicinida bot-ka...**", parse_mode="Markdown")
-
-        try:
-            # Test Bot Token validity
-            temp_bot = Bot(token=text)
-            bot_me = await temp_bot.get_me()
-            bot_id = bot_me.id
-            username = bot_me.username
-
-            # Save Bot to Database
-            await db.add_new_bot(owner_id=user_id, token=text, bot_id=bot_id, username=username)
-
-            # Instantly launch sub-bot
-            started = await bot_manager.start_bot_instance(bot_id, text)
-
-            if started:
-                await status_msg.edit_text(
-                    f"✅ **WAA LAGU GUULEYSTAY!**\n\n"
-                    f"🤖 **Bot Name:** @{username}\n"
-                    f"🆔 **Bot ID:** `{bot_id}`\n\n"
-                    f"Bot-kaagii si toos ah ayuu u bilaawday oo waa shaqaynayaa!",
-                    parse_mode="Markdown"
-                )
-            else:
-                await status_msg.edit_text("❌ Bot-ka waa la kaydiyay lkn waa kici waayay. Hubi token-ka ama server log-ga.")
-
-        except Exception as e:
-            logger.error(f"Token setup error: {e}")
-            await status_msg.edit_text(f"❌ **Cilad ayaa dhacday:** Token-ku ma sii shaqaynayo ama waa la tirtiray BotFather.")
-
-    async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        if user_id != Config.OWNER_ID:
-            return
-
-        total_bots = await db.bots.count_documents({})
-        active_bots = await db.bots.count_documents({"status": "active"})
-        total_users = await db.users.count_documents({})
-        total_downloads = await db.downloads.count_documents({})
-
-        await update.message.reply_text(
-            f"👑 **SAAS ADMIN DASHBOARD**\n\n"
-            f"🤖 Total Bots Created: `{total_bots}`\n"
-            f"🟢 Active Bots: `{active_bots}`\n"
-            f"👥 Total End Users: `{total_users}`\n"
-            f"📥 Total Downloads: `{total_downloads}`",
+        # Custom dict JSON keyboard sending
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=json.dumps(main_keyboard()),
             parse_mode="Markdown"
         )
 
-    async def handle_callbacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        await query.answer()
+    async def handle_managed_bot_created(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        message = update.message
+        managed = message.managed_bot_created
+        if not managed or not managed.bot:
+            return
 
-        if query.data == "create_bot":
-            await query.message.edit_text(
-                "📝 **SIDA BOT CUSUB LOO ABUURO:**\n\n"
-                "1. U tag @BotFather oo ka samey bot cusub (`/newbot`).\n"
-                "2. Ka soo guuri **API Token**-ka uu ku siiyo.\n"
-                "3. Token-kaas halkan iisoo dir (paste gareey).\n\n"
-                "⏳ Iisoo dir Token-ka oo kaliya...",
+        bot_info = managed.bot
+        bot_id = bot_info.id
+        username = bot_info.username or ""
+        first_name = bot_info.first_name or "Managed Bot"
+        owner_id = update.effective_user.id
+
+        status_msg = await update.message.reply_text("⏳ **Bot-ka waa la sameeyay! Waxaan helayaa Token-ka oo kicinayaa...**", parse_mode="Markdown")
+
+        # 1. Soo saar Token-ka otomaatiga ah ee Telegram Managed Bot API
+        token = await self.get_managed_bot_token(bot_id)
+
+        if not token:
+            await status_msg.edit_text("❌ **Cilad:** Token-ka bot-ka ma soo bixin. Hubi in Manager Bot-kaagu leeyahay Bot Management Mode.")
+            return
+
+        # 2. Ku kaydi Database-ka
+        await db.add_new_bot(owner_id=owner_id, token=token, bot_id=bot_id, username=username)
+
+        # 3. Kici Bot-ka yar (Managed Bot Instance)
+        started = await bot_manager.start_bot_instance(bot_id, token)
+
+        if started:
+            await status_msg.edit_text(
+                f"✅ **BOT-KAA TIKTO/YT/IG DOWNLOADER WAA LA KICIYAY!**\n\n"
+                f"🤖 Name: **{first_name}**\n"
+                f"🔗 Username: **@{username}**\n"
+                f"🟢 Status: **Active & Online**\n\n"
+                f"👉 Taabo halkan si aad u gasho: https://t.me/{username}",
                 parse_mode="Markdown"
             )
-        elif query.data == "my_bots":
-            await self.my_bots_command(update, context)
-        elif query.data == "system_stats":
-            total_bots = await db.bots.count_documents({"status": "active"})
-            await query.message.edit_text(f"📊 Total Active Bots in Platform: `{total_bots}`", parse_mode="Markdown")
+        else:
+            await status_msg.edit_text("❌ Bot-ka waa la abuuray lkn waa kici waayay. Fadlan eeg system logs.")
+
+    async def handle_text_messages(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        text = update.message.text
+        user_id = update.effective_user.id
+
+        if text == "🤖 My Bots":
+            cursor = db.bots.find({"owner_id": user_id})
+            user_bots = await cursor.to_list(length=None)
+
+            if not user_bots:
+                await update.message.reply_text("❌ Weli ma lihid managed bot. Taabo **➕ Create New Bot**.")
+                return
+
+            msg = "🤖 **BOT-YADAADA ACTIVE-KA AH:**\n\n"
+            for b in user_bots:
+                msg += f"• **Name:** @{b.get('username', 'N/A')}\n  `ID: {b['bot_id']}` | Status: `{b['status']}`\n\n"
+            await update.message.reply_text(msg, parse_mode="Markdown")
+
+        elif text == "ℹ️ Help":
+            await update.message.reply_text(
+                "ℹ️ **BOT BUILDER HELP**\n\n"
+                "Taabo **➕ Create New Bot** si Telegram toos kuugu muujiyo bogga abuurista bot-ka iyadoon BotFather lagu wareegayn.",
+                parse_mode="Markdown"
+            )
 
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Main Bot Error: {context.error}")
