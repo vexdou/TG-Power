@@ -27,6 +27,7 @@ class ManagedBotHandler:
     def __init__(self, bot_id: int, token: str):
         self.bot_id = bot_id
         self.token = token
+        self.url_cache = {}  # Kaydka ku meel gaarka ah ee link-yada (Amniga Telegram 64-byte limit)
         self.app = Application.builder().token(token).build()
         self._setup_handlers()
 
@@ -102,8 +103,20 @@ class ManagedBotHandler:
             file_path = result["file_path"]
             try:
                 if result["media_type"] == "video":
+                    # Kaydi link-ga oo samee batoonka MUSIC 🎵
+                    url_key = str(abs(hash(url)))[:12]
+                    self.url_cache[url_key] = url
+
+                    music_keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("MUSIC 🎵", callback_data=f"mconvert_{url_key}")]
+                    ])
+
                     with open(file_path, "rb") as video_file:
-                        await update.message.reply_video(video=video_file, caption=f"✅ {result['title']}")
+                        await update.message.reply_video(
+                            video=video_file,
+                            caption=f"✅ {result['title']}",
+                            reply_markup=music_keyboard
+                        )
                 else:
                     with open(file_path, "rb") as audio_file:
                         await update.message.reply_audio(audio=audio_file, caption=f"✅ {result['title']}")
@@ -177,6 +190,38 @@ class ManagedBotHandler:
                 await db.set_user_language(self.bot_id, query.from_user.id, lang_code)
                 texts = LANGUAGES.get(lang_code, LANGUAGES["en"])
                 await query.message.edit_text(f"✅ {texts['welcome']}")
+
+            elif query.data.startswith("mconvert_"):
+                url_key = query.data.split("_")[1]
+                url = self.url_cache.get(url_key)
+                user_id = query.from_user.id
+                lang = await self.get_user_lang(user_id)
+                texts = LANGUAGES.get(lang, LANGUAGES["en"])
+
+                if not url:
+                    await query.message.reply_text("❌ Link-gan waa uu dhacay. Fadlan dib ugu soo dir link-ga bot-ka.")
+                    return
+
+                status_msg = await query.message.reply_text("🎵 Codka ayaa loo diyaarinayaa MP3... Fadlan sug.")
+                result = await downloader.download_audio(url, user_id)
+
+                if result["success"]:
+                    file_path = result["file_path"]
+                    try:
+                        with open(file_path, "rb") as audio_file:
+                            await query.message.reply_audio(
+                                audio=audio_file,
+                                caption=f"🎵 **{result['title']}**\n\n_Converted to MP3 successfully!_"
+                            )
+                        await db.log_download(self.bot_id, user_id, result.get("platform", "general"), "audio")
+                        await status_msg.delete()
+                    except Exception as e:
+                        await status_msg.edit_text(f"{texts['error']} {str(e)}")
+                    finally:
+                        downloader.cleanup(file_path)
+                else:
+                    await status_msg.edit_text(f"{texts['error']} {result['error']}")
+
         except Exception as e:
             logger.error(f"Callback query error: {e}")
 
