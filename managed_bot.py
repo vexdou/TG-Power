@@ -1,13 +1,9 @@
+import os
 import asyncio
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-    ContextTypes,
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 )
 from database import db
 from downloader import downloader
@@ -15,382 +11,174 @@ from downloader import downloader
 logger = logging.getLogger(__name__)
 
 LANGUAGES = {
-    "en": {
-        "welcome": "👋 Welcome! Send me a public video/media link from YouTube, TikTok, Instagram, Facebook, X/Twitter, Pinterest or Snapchat.",
-        "invalid": "❌ Please send a valid http/https link.",
-        "downloading": "⏳ Downloading media... Please wait.",
-        "error": "❌ Error:",
-    },
-    "so": {
-        "welcome": "👋 Soo dhawoow! Ii soo dir link public ah oo YouTube, TikTok, Instagram, Facebook, X/Twitter, Pinterest ama Snapchat ah.",
-        "invalid": "❌ Fadlan soo dir link http/https sax ah.",
-        "downloading": "⏳ Media-ga ayaa la soo dejinayaa... Fadlan sug.",
-        "error": "❌ Cilad:",
-    },
-    "ar": {
-        "welcome": "👋 أهلاً بك! أرسل رابط وسائط عام من YouTube أو TikTok أو Instagram أو Facebook أو X أو Pinterest أو Snapchat.",
-        "invalid": "❌ أرسل رابط http/https صحيح.",
-        "downloading": "⏳ جارٍ التنزيل... يرجى الانتظار.",
-        "error": "❌ خطأ:",
-    },
-    "es": {
-        "welcome": "👋 ¡Bienvenido! Envíame un enlace público de YouTube, TikTok, Instagram, Facebook, X, Pinterest o Snapchat.",
-        "invalid": "❌ Envía un enlace http/https válido.",
-        "downloading": "⏳ Descargando... Por favor espera.",
-        "error": "❌ Error:",
-    },
-    "fr": {
-        "welcome": "👋 Bienvenue ! Envoyez un lien public YouTube, TikTok, Instagram, Facebook, X, Pinterest ou Snapchat.",
-        "invalid": "❌ Envoyez un lien http/https valide.",
-        "downloading": "⏳ Téléchargement en cours...",
-        "error": "❌ Erreur:",
-    },
-    "tr": {
-        "welcome": "👋 Hoş geldiniz! YouTube, TikTok, Instagram, Facebook, X, Pinterest veya Snapchat bağlantısı gönderin.",
-        "invalid": "❌ Geçerli bir http/https bağlantısı gönderin.",
-        "downloading": "⏳ İndiriliyor...",
-        "error": "❌ Hata:",
-    },
+    "en": {"name": "English 🇬🇧", "welcome": "👋 Welcome! Send me any video link from YouTube, TikTok, IG, FB, Twitter.", "invalid": "❌ Please send a valid link.", "downloading": "⏳ Downloading... Please wait.", "error": "❌ Error occurred:"},
+    "so": {"name": "Soomaali 🇸🇴", "welcome": "👋 Soo dhawoow! Iisoo dir link kasta oo video ah (YouTube, TikTok, IG, FB, Twitter).", "invalid": "❌ Fadlan dir link sax ah.", "downloading": "⏳ Soo dejintu waa ay socotaa... Fadlan sug.", "error": "❌ Cilad ayaa dhacday:"},
+    "ar": {"name": "العربية 🇸🇦", "welcome": "👋 أهلاً بك! أرسل لي أي رابط فيديو من يوتيوب، تيك توك، إنستغرام، فيسبوك.", "invalid": "❌ يرجى إرسال رابط صحيح.", "downloading": "⏳ جاري التحميل... يرجى الانتظار.", "error": "❌ حدث خطأ:"},
+    "es": {"name": "Español 🇪🇸", "welcome": "👋 ¡Bienvenido! Envíame cualquier enlace de video de YouTube, TikTok, IG, FB.", "invalid": "❌ Por favor envía un enlace válido.", "downloading": "⏳ Descargando... Por favor espera.", "error": "❌ Ocurrió un error:"},
+    "fr": {"name": "Français 🇫🇷", "welcome": "👋 Bienvenue ! Envoyez-moi n'importe quel lien vidéo.", "invalid": "❌ Veuillez envoyer un lien valide.", "downloading": "⏳ Téléchargement en cours...", "error": "❌ Une erreur est survenue :"},
+    "tr": {"name": "Türkçe 🇹🇷", "welcome": "👋 Hoş geldiniz! YouTube, TikTok, IG, FB'den herhangi bir video bağlantısı gönderin.", "invalid": "❌ Lütfen geçerli bir bağlantı gönderin.", "downloading": "⏳ İndiriliyor...", "error": "❌ Bir hata oluştu:"},
+    "de": {"name": "Deutsch 🇩🇪", "welcome": "👋 Willkommen! Senden Sie mir einen beliebigen Videolink.", "invalid": "❌ Bitte senden Sie einen gültigen Link.", "downloading": "⏳ Herunterladen...", "error": "❌ Ein Fehler ist aufgetreten:"},
+    "ru": {"name": "Русский 🇷🇺", "welcome": "👋 Добро пожаловать! Отправьте мне ссылку на видео.", "invalid": "❌ Пожалуйста, отправьте действующую ссылку.", "downloading": "⏳ Скачивание...", "error": "❌ Произошла ошибка:"},
+    "hi": {"name": "हिन्दी 🇮🇳", "welcome": "👋 स्वागत है! मुझे कोई भी वीडियो लिंक भेजें।", "invalid": "❌ कृपया एक मान्य लिंक भेजें।", "downloading": "⏳ डाउनलोड हो रहा है...", "error": "❌ त्रुटि:"},
+    "pt": {"name": "Português 🇵🇹", "welcome": "👋 Bem-vindo! Envie-me qualquer link de vídeo.", "invalid": "❌ Por favor envie um link válido.", "downloading": "⏳ Baixando...", "error": "❌ Ocorreu um erro:"}
 }
-
 
 class ManagedBotHandler:
     def __init__(self, bot_id: int, token: str):
-        self.bot_id = int(bot_id)
+        self.bot_id = bot_id
         self.token = token
-
-        self.app = (
-            Application.builder()
-            .token(token)
-            .concurrent_updates(True)
-            .build()
-        )
-
+        self.app = Application.builder().token(token).build()
         self._setup_handlers()
 
     def _setup_handlers(self):
         self.app.add_handler(CommandHandler("start", self.start_command))
+        self.app.add_handler(CommandHandler("language", self.language_command))
         self.app.add_handler(CommandHandler("stats", self.stats_command))
         self.app.add_handler(CommandHandler("broadcast", self.broadcast_command))
-
-        self.app.add_handler(
-            CallbackQueryHandler(self.handle_callbacks)
-        )
-
-        self.app.add_handler(
-            MessageHandler(
-                filters.TEXT & ~filters.COMMAND,
-                self.handle_message,
-            )
-        )
-
+        self.app.add_handler(CallbackQueryHandler(self.handle_callbacks))
+        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         self.app.add_error_handler(self.error_handler)
 
-    async def start_command(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        if not update.effective_user or not update.message:
-            return
+    async def get_user_lang(self, user_id: int) -> str:
+        try:
+            u = await db.get_bot_user(self.bot_id, user_id)
+            if u and u.get("language"):
+                return u.get("language")
+        except Exception as e:
+            logger.error(f"Error getting user language: {e}")
+        return "en"
 
+    def get_language_keyboard(self):
+        buttons = []
+        keys = list(LANGUAGES.keys())
+        for i in range(0, len(keys), 2):
+            row = [InlineKeyboardButton(LANGUAGES[keys[i]]["name"], callback_data=f"msetlang_{keys[i]}")]
+            if i + 1 < len(keys):
+                row.append(InlineKeyboardButton(LANGUAGES[keys[i+1]]["name"], callback_data=f"msetlang_{keys[i+1]}"))
+            buttons.append(row)
+        return InlineKeyboardMarkup(buttons)
+
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = update.effective_user
+            await db.save_bot_user(self.bot_id, user.id, user.username or "", user.full_name or "")
+            
+            lang = await self.get_user_lang(user.id)
+            welcome_text = LANGUAGES.get(lang, LANGUAGES["en"])["welcome"]
 
-            await db.save_bot_user(
-                self.bot_id,
-                user.id,
-                user.username or "",
-                user.full_name or "",
+            await update.message.reply_text(
+                f"{welcome_text}\n\n🌐 **Select Language / Dooro Luuqada:**",
+                reply_markup=self.get_language_keyboard(),
+                parse_mode="Markdown"
             )
+        except Exception as e:
+            logger.error(f"Managed bot start error: {e}")
 
-            bot_user = await db.get_bot_user(
-                self.bot_id,
-                user.id,
-            )
-            lang = (bot_user or {}).get("language", "en")
+    async def language_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "🌐 **Select Language / Dooro Luuqada:**",
+            reply_markup=self.get_language_keyboard(),
+            parse_mode="Markdown"
+        )
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            url = update.message.text.strip()
+            user_id = update.effective_user.id
+            lang = await self.get_user_lang(user_id)
             texts = LANGUAGES.get(lang, LANGUAGES["en"])
 
-            buttons = [
-                [
-                    InlineKeyboardButton(
-                        "English 🇬🇧",
-                        callback_data="msetlang_en",
-                    ),
-                    InlineKeyboardButton(
-                        "Soomaali 🇸🇴",
-                        callback_data="msetlang_so",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "العربية 🇸🇦",
-                        callback_data="msetlang_ar",
-                    ),
-                    InlineKeyboardButton(
-                        "Español 🇪🇸",
-                        callback_data="msetlang_es",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "Français 🇫🇷",
-                        callback_data="msetlang_fr",
-                    ),
-                    InlineKeyboardButton(
-                        "Türkçe 🇹🇷",
-                        callback_data="msetlang_tr",
-                    ),
-                ],
-            ]
+            if not (url.startswith("http://") or url.startswith("https://")):
+                await update.message.reply_text(texts["invalid"])
+                return
 
-            await update.message.reply_text(
-                texts["welcome"],
-                reply_markup=InlineKeyboardMarkup(buttons),
-            )
+            status_msg = await update.message.reply_text(texts["downloading"])
+            result = await downloader.download(url, user_id)
 
-        except Exception:
-            logger.exception("Managed /start error")
+            if not result["success"]:
+                await status_msg.edit_text(f"{texts['error']} {result['error']}")
+                return
 
+            file_path = result["file_path"]
             try:
-                await update.message.reply_text(
-                    "👋 Welcome! Send me a public media link."
-                )
-            except Exception:
-                pass
+                if result["media_type"] == "video":
+                    with open(file_path, "rb") as video_file:
+                        await update.message.reply_video(video=video_file, caption=f"✅ {result['title']}")
+                else:
+                    with open(file_path, "rb") as audio_file:
+                        await update.message.reply_audio(audio=audio_file, caption=f"✅ {result['title']}")
 
-    async def handle_message(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        if not update.message or not update.effective_user:
-            return
-
-        url = (update.message.text or "").strip()
-
-        if not (
-            url.startswith("http://")
-            or url.startswith("https://")
-        ):
-            await update.message.reply_text(
-                "❌ Please send a valid media link."
-            )
-            return
-
-        user = update.effective_user
-
-        await db.save_bot_user(
-            self.bot_id,
-            user.id,
-            user.username or "",
-            user.full_name or "",
-        )
-
-        status_msg = await update.message.reply_text(
-            "⏳ **Downloading media... Please wait.**",
-            parse_mode="Markdown",
-        )
-
-        result = await downloader.download(
-            url=url,
-            user_id=user.id,
-            bot_id=self.bot_id,
-        )
-
-        if not result.get("success"):
-            error_text = str(
-                result.get("error", "Unknown download error")
-            )
-
-            try:
-                await status_msg.edit_text(
-                    f"❌ **Download failed:**\n`{error_text[:3500]}`",
-                    parse_mode="Markdown",
-                )
-            except Exception:
-                await status_msg.edit_text(
-                    f"❌ Download failed:\n{error_text[:3500]}"
-                )
-            return
-
-        file_path = result.get("file_path")
-        title = result.get("title") or "Downloaded Media"
-        media_type = result.get("media_type", "video")
-
-        if not file_path:
-            await status_msg.edit_text(
-                "❌ Download completed but no file was produced."
-            )
-            return
-
-        try:
-            if media_type == "audio":
-                with open(file_path, "rb") as audio_file:
-                    await update.message.reply_audio(
-                        audio=audio_file,
-                        title=title[:64],
-                    )
-            else:
-                with open(file_path, "rb") as video_file:
-                    await update.message.reply_video(
-                        video=video_file,
-                        caption=f"✅ {title[:900]}",
-                        supports_streaming=True,
-                    )
-
-            await db.log_download(
-                self.bot_id,
-                user.id,
-                result.get("platform", "general"),
-                media_type,
-            )
-
-            try:
+                await db.log_download(self.bot_id, user_id, result["platform"], result["media_type"])
                 await status_msg.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                await status_msg.edit_text(f"{texts['error']} {str(e)}")
+            finally:
+                downloader.cleanup(file_path)
 
-        except Exception as exc:
-            logger.exception("Telegram upload error")
+        except Exception as e:
+            logger.error(f"Message handling error in bot {self.bot_id}: {e}")
 
-            try:
-                await status_msg.edit_text(
-                    "❌ Telegram could not upload this file. "
-                    "The downloaded file may be larger than Telegram's bot upload limit."
-                )
-            except Exception:
-                pass
-
-        finally:
-            downloader.cleanup(file_path)
-
-    async def stats_command(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        if not update.message or not update.effective_user:
-            return
-
+    async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
+            user_id = update.effective_user.id
             bot_data = await db.get_bot(self.bot_id)
 
-            if (
-                not bot_data
-                or bot_data.get("owner_id")
-                != update.effective_user.id
-            ):
+            if not bot_data or bot_data.get("owner_id") != user_id:
                 return
 
             stats = await db.get_bot_stats(self.bot_id)
-
             await update.message.reply_text(
-                "📊 **BOT OWNER STATS**\n\n"
-                f"👥 Users: `{stats['total_users']}`\n"
-                f"📥 Downloads: `{stats['total_downloads']}`",
-                parse_mode="Markdown",
+                f"📊 **BOT OWNER STATS**\n\n"
+                f"👥 Total Users: `{stats['total_users']}`\n"
+                f"📥 Downloads: `{stats['total_downloads']}`\n"
+                f"🎬 Videos: `{stats['videos']}`\n"
+                f"🎵 Audio: `{stats['audio']}`",
+                parse_mode="Markdown"
             )
+        except Exception as e:
+            logger.error(f"Stats command error: {e}")
 
-        except Exception:
-            logger.exception("Stats error")
-
-    async def broadcast_command(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        if not update.message or not update.effective_user:
-            return
-
+    async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
+            user_id = update.effective_user.id
             bot_data = await db.get_bot(self.bot_id)
 
-            if (
-                not bot_data
-                or bot_data.get("owner_id")
-                != update.effective_user.id
-            ):
+            if not bot_data or bot_data.get("owner_id") != user_id:
                 return
 
             if not context.args:
-                await update.message.reply_text(
-                    "Usage: /broadcast Your message"
-                )
+                await update.message.reply_text("⚠️ Usage: `/broadcast Your message here`", parse_mode="Markdown")
                 return
 
-            text = " ".join(context.args)
+            bc_text = " ".join(context.args)
             users = await db.get_all_bot_users(self.bot_id)
+            msg = await update.message.reply_text(f"📢 Starting broadcast to {len(users)} users...")
 
-            progress = await update.message.reply_text(
-                f"📢 Broadcasting to {len(users)} users..."
-            )
-
-            sent = 0
-            failed = 0
-
-            for user in users:
+            success, failed = 0, 0
+            for u in users:
                 try:
-                    await self.app.bot.send_message(
-                        chat_id=user["user_id"],
-                        text=text,
-                    )
-                    sent += 1
-                    await asyncio.sleep(0.05)
+                    await self.app.bot.send_message(chat_id=u["user_id"], text=bc_text)
+                    success += 1
+                    await asyncio.sleep(0.04)
                 except Exception:
                     failed += 1
 
-            await progress.edit_text(
-                f"✅ Broadcast finished.\n\n"
-                f"Sent: {sent}\n"
-                f"Failed: {failed}"
-            )
+            await msg.edit_text(f"✅ **Broadcast Completed!**\n\n🟢 Sent: {success}\n🔴 Failed: {failed}", parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Broadcast command error: {e}")
 
-        except Exception:
-            logger.exception("Broadcast error")
-
-    async def handle_callbacks(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        query = update.callback_query
-
-        if not query:
-            return
-
+    async def handle_callbacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
+            query = update.callback_query
             await query.answer()
 
             if query.data.startswith("msetlang_"):
-                lang_code = query.data.split("_", 1)[1]
+                lang_code = query.data.split("_")[1]
+                await db.set_user_language(self.bot_id, query.from_user.id, lang_code)
+                texts = LANGUAGES.get(lang_code, LANGUAGES["en"])
+                await query.message.edit_text(f"✅ {texts['welcome']}")
+        except Exception as e:
+            logger.error(f"Callback query error: {e}")
 
-                if lang_code not in LANGUAGES:
-                    lang_code = "en"
-
-                await db.set_user_language(
-                    self.bot_id,
-                    query.from_user.id,
-                    lang_code,
-                )
-
-                texts = LANGUAGES[lang_code]
-
-                await query.message.edit_text(
-                    f"✅ Language changed.\n\n{texts['welcome']}"
-                )
-
-        except Exception:
-            logger.exception("Callback error")
-
-    async def error_handler(
-        self,
-        update: object,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        logger.error(
-            "Managed bot %s exception: %s",
-            self.bot_id,
-            context.error,
-            exc_info=context.error,
-        )
+    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
+        logger.error(f"Managed Bot Exception [{self.bot_id}]: {context.error}")
