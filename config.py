@@ -1,24 +1,22 @@
 import os
 from dotenv import load_dotenv
 
+# Soo rarida variables-ka .env faylka
 load_dotenv()
 
 class Config:
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
-    MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-    DB_NAME: str = os.getenv("DB_NAME", "tg_power_saas")
+    # 1. Main Bot & Admin Config
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_MAIN_BOT_TOKEN_HERE")
+    OWNER_ID = int(os.getenv("OWNER_ID", "0"))  # Telegram User ID-gaaga Admin-ka
     
-    # Telegram API Credentials (bot_creator uses this to talk with BotFather)
-    API_ID: int = int(os.getenv("API_ID", "0"))
-    API_HASH: str = os.getenv("API_HASH", "")
-    BOTFATHER_SESSION: str = os.getenv("BOTFATHER_SESSION", "botfather_creator")
+    # 2. MongoDB Database Config
+    MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    DB_NAME = os.getenv("DB_NAME", "tg_power_db")
     
-    # Main Admin Telegram User IDs
-    ADMIN_IDS: list[int] = [
-        int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()
-    ]
+    # 3. Downloader Settings
+    DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
+    MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50")) # 50MB ee Telegram Bot Limit
     
-    # System limits
-    MAX_BOTS_PER_USER: int = int(os.getenv("MAX_BOTS_PER_USER", "3"))
-    MAX_CONCURRENT_DOWNLOADS: int = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "5"))
-    DEFAULT_DOWNLOAD_LIMIT: int = int(os.getenv("DEFAULT_DOWNLOAD_LIMIT", "50"))
+    # 4. System Settings
+    DEFAULT_LANG = "en"
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
