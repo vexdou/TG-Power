@@ -22,7 +22,16 @@ class Database:
         await self.bots.create_index("username", unique=True)
         await self.bot_users.create_index([("bot_id", 1), ("user_id", 1)], unique=True)
         await self.downloads.create_index([("bot_id", 1), ("timestamp", -1)])
+        
+        # Initialize default platform settings
+        if not await self.settings.find_one({"_id": "platform_config"}):
+            await self.settings.insert_one({
+                "_id": "platform_config",
+                "force_join_channels": [],
+                "maintenance_mode": False
+            })
 
+    # Main Bot User Operations
     async def get_or_create_user(self, user_id: int, username: str = None, full_name: str = None):
         user = await self.users.find_one({"user_id": user_id})
         if not user:
@@ -30,41 +39,56 @@ class Database:
                 "user_id": user_id,
                 "username": username,
                 "full_name": full_name,
-                "can_create_bots": True,
-                "is_blocked": False,
+                "language": None,
+                "is_banned": False,
                 "created_at": datetime.now(timezone.utc)
             }
             await self.users.insert_one(user)
         return user
 
-    # Managed Bot User Operations
-    async def get_bot_user(self, bot_id: int, user_id: int):
-        return await self.bot_users.find_one({"bot_id": bot_id, "user_id": user_id})
+    async def set_main_user_language(self, user_id: int, language: str):
+        await self.users.update_one({"user_id": user_id}, {"$set": {"language": language}})
 
-    async def save_bot_user(self, bot_id: int, user_id: int, username: str, full_name: str, language: str = None):
-        update_data = {
-            "username": username,
-            "full_name": full_name
+    async def ban_unban_user(self, user_id: int, ban_status: bool):
+        await self.users.update_one({"user_id": user_id}, {"$set": {"is_banned": ban_status}})
+
+    # Settings & Force Join
+    async def get_platform_settings(self):
+        return await self.settings.find_one({"_id": "platform_config"})
+
+    async def add_force_join_channel(self, channel: str):
+        await self.settings.update_one(
+            {"_id": "platform_config"},
+            {"$addToSet": {"force_join_channels": channel}}
+        )
+
+    async def remove_force_join_channel(self, channel: str):
+        await self.settings.update_one(
+            {"_id": "platform_config"},
+            {"$pull": {"force_join_channels": channel}}
+        )
+
+    # Scalable Cursor for 1,000,000+ Users Broadcast
+    async def get_all_main_users_cursor(self):
+        return self.users.find({"is_banned": False}, {"user_id": 1})
+
+    # Platform Global Stats
+    async def get_global_platform_stats(self):
+        total_main_users = await self.users.count_documents({})
+        total_created_bots = await self.bots.count_documents({})
+        active_bots = await self.bots.count_documents({"status": "active"})
+        total_downloads = await self.downloads.count_documents({})
+        total_bot_users = await self.bot_users.count_documents({})
+
+        return {
+            "total_main_users": total_main_users,
+            "total_created_bots": total_created_bots,
+            "active_bots": active_bots,
+            "total_downloads": total_downloads,
+            "total_bot_users": total_bot_users
         }
-        if language:
-            update_data["language"] = language
 
-        await self.bot_users.update_one(
-            {"bot_id": bot_id, "user_id": user_id},
-            {"$set": update_data, "$setOnInsert": {"joined_at": datetime.now(timezone.utc)}},
-            upsert=True
-        )
-
-    async def set_user_language(self, bot_id: int, user_id: int, language: str):
-        await self.bot_users.update_one(
-            {"bot_id": bot_id, "user_id": user_id},
-            {"$set": {"language": language}}
-        )
-
-    async def get_all_bot_users(self, bot_id: int):
-        cursor = self.bot_users.find({"bot_id": bot_id})
-        return await cursor.to_list(length=100000)
-
+    # Managed Bot Operations
     async def save_managed_bot(self, bot_id: int, owner_id: int, username: str, name: str, token: str):
         bot_doc = {
             "bot_id": bot_id,
@@ -75,10 +99,7 @@ class Database:
             "status": "active",
             "created_at": datetime.now(timezone.utc),
             "force_join_channels": [],
-            "settings": {
-                "download_limit": Config.DEFAULT_DOWNLOAD_LIMIT,
-                "allow_audio": True
-            }
+            "settings": {"download_limit": Config.DEFAULT_DOWNLOAD_LIMIT, "allow_audio": True}
         }
         await self.bots.update_one({"bot_id": bot_id}, {"$set": bot_doc}, upsert=True)
 
@@ -90,31 +111,11 @@ class Database:
         cursor = self.bots.find({"status": "active"})
         return await cursor.to_list(length=1000)
 
-    async def get_bot(self, bot_id: int):
-        return await self.bots.find_one({"bot_id": bot_id})
+    async def delete_bot(self, bot_id: int):
+        await self.bots.delete_one({"bot_id": bot_id})
+        await self.bot_users.delete_many({"bot_id": bot_id})
 
     async def update_bot_status(self, bot_id: int, status: str):
         await self.bots.update_one({"bot_id": bot_id}, {"$set": {"status": status}})
-
-    async def log_download(self, bot_id: int, user_id: int, platform: str, media_type: str):
-        await self.downloads.insert_one({
-            "bot_id": bot_id,
-            "user_id": user_id,
-            "platform": platform,
-            "media_type": media_type,
-            "timestamp": datetime.now(timezone.utc)
-        })
-
-    async def get_bot_stats(self, bot_id: int):
-        total_users = await self.bot_users.count_documents({"bot_id": bot_id})
-        total_downloads = await self.downloads.count_documents({"bot_id": bot_id})
-        videos = await self.downloads.count_documents({"bot_id": bot_id, "media_type": "video"})
-        audio = await self.downloads.count_documents({"bot_id": bot_id, "media_type": "audio"})
-        return {
-            "total_users": total_users,
-            "total_downloads": total_downloads,
-            "videos": videos,
-            "audio": audio
-        }
 
 db = Database()
