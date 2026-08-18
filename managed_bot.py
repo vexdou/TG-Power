@@ -10,7 +10,6 @@ from downloader import downloader
 
 logger = logging.getLogger(__name__)
 
-# 10 Supported Languages Dictionary
 LANGUAGES = {
     "en": {"name": "English 🇬🇧", "welcome": "👋 Welcome! Send me any video link from YouTube, TikTok, IG, FB, Twitter.", "select_lang": "🌐 Please select your language:", "downloading": "⏳ Downloading... Please wait.", "download_success": "✅ Downloaded successfully!", "invalid_url": "❌ Please send a valid link.", "error": "❌ Error occurred:"},
     "so": {"name": "Soomaali 🇸🇴", "welcome": "👋 Soo dhawoow! Iisoo dir link kasta oo video ah (YouTube, TikTok, IG, FB, Twitter).", "select_lang": "🌐 Fadlan dooro luuqadaada:", "downloading": "⏳ Soo dejintu waa ay socotaa... Fadlan sug.", "download_success": "✅ Waa lagu guuleystay soo dejinta!", "invalid_url": "❌ Fadlan dir link sax ah.", "error": "❌ Cilad ayaa dhacday:"},
@@ -36,16 +35,20 @@ class ManagedBotHandler:
         self.app.add_handler(CommandHandler("language", self.language_command))
         self.app.add_handler(CommandHandler("stats", self.stats_command))
         self.app.add_handler(CommandHandler("broadcast", self.broadcast_command))
-        self.app.add_handler(CommandHandler("admin", self.admin_panel))
+        self.app.add_handler(CommandHandler("admin", self.stats_command))
         self.app.add_handler(CallbackQueryHandler(self.handle_callbacks))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
-        # Prevent crash - Global Error Handler
         self.app.add_error_handler(self.error_handler)
 
     async def get_user_lang(self, user_id: int) -> str:
-        u = await db.get_bot_user(self.bot_id, user_id)
-        return u.get("language") if u and u.get("language") else "en"
+        try:
+            u = await db.get_bot_user(self.bot_id, user_id)
+            if u and u.get("language"):
+                return u.get("language")
+        except Exception as e:
+            logger.error(f"Error fetching lang: {e}")
+        return "en"
 
     def get_language_keyboard(self):
         buttons = []
@@ -57,13 +60,45 @@ class ManagedBotHandler:
             buttons.append(row)
         return InlineKeyboardMarkup(buttons)
 
+    async def check_force_join(self, user_id: int) -> bool:
+        try:
+            bot_data = await db.get_bot(self.bot_id)
+            if not bot_data:
+                return True
+            channels = bot_data.get("force_join_channels", [])
+            if not channels:
+                return True
+            for channel in channels:
+                try:
+                    member = await self.app.bot.get_chat_member(chat_id=channel, user_id=user_id)
+                    if member.status in ["left", "kicked"]:
+                        return False
+                except Exception:
+                    return False
+        except Exception as e:
+            logger.error(f"Force join check error: {e}")
+        return True
+
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user = update.effective_user
-            bot_user = await db.get_bot_user(self.bot_id, user.id)
+            await db.save_bot_user(self.bot_id, user.id, user.username or "", user.full_name or "")
 
+            if not await self.check_force_join(user.id):
+                bot_data = await db.get_bot(self.bot_id)
+                buttons = [
+                    [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")]
+                    for ch in bot_data.get("force_join_channels", [])
+                ]
+                buttons.append([InlineKeyboardButton("🔄 Check Membership", callback_data="check_fj")])
+                await update.message.reply_text(
+                    "⚠️ Please join our channels to use this bot:",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+                return
+
+            bot_user = await db.get_bot_user(self.bot_id, user.id)
             if not bot_user or not bot_user.get("language"):
-                await db.save_bot_user(self.bot_id, user.id, user.username, user.full_name)
                 await update.message.reply_text(
                     "🌐 **Choose Language / Dooro Luuqada:**",
                     reply_markup=self.get_language_keyboard(),
@@ -71,10 +106,10 @@ class ManagedBotHandler:
                 )
             else:
                 lang = bot_user.get("language", "en")
-                msg = LANGUAGES[lang]["welcome"]
+                msg = LANGUAGES.get(lang, LANGUAGES["en"])["welcome"]
                 await update.message.reply_text(f"{msg}\n\n🌐 Change language: /language")
         except Exception as e:
-            logger.error(f"Start command error: {e}")
+            logger.error(f"Managed start error: {e}")
 
     async def language_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
@@ -87,6 +122,11 @@ class ManagedBotHandler:
         try:
             url = update.message.text.strip()
             user_id = update.effective_user.id
+
+            if not await self.check_force_join(user_id):
+                await update.message.reply_text("⚠️ Please join channels first.")
+                return
+
             lang = await self.get_user_lang(user_id)
             texts = LANGUAGES.get(lang, LANGUAGES["en"])
 
@@ -118,45 +158,42 @@ class ManagedBotHandler:
                 downloader.cleanup(file_path)
 
         except Exception as e:
-            logger.error(f"Message handling error: {e}")
+            logger.error(f"Managed message handling error: {e}")
 
-    # BOT OWNER COMMANDS: /stats
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user_id = update.effective_user.id
             bot_data = await db.get_bot(self.bot_id)
 
-            if bot_data["owner_id"] != user_id:
+            if not bot_data or bot_data.get("owner_id") != user_id:
                 return
 
             stats = await db.get_bot_stats(self.bot_id)
             await update.message.reply_text(
                 f"📊 **BOT STATISTICS**\n\n"
-                f"👥 Total Users: {stats['total_users']}\n"
-                f"📥 Total Downloads: {stats['total_downloads']}\n"
-                f"🎬 Videos: {stats['videos']}\n"
-                f"🎵 Audio: {stats['audio']}",
+                f"👥 Total Users: `{stats['total_users']}`\n"
+                f"📥 Total Downloads: `{stats['total_downloads']}`\n"
+                f"🎬 Videos: `{stats['videos']}`\n"
+                f"🎵 Audio: `{stats['audio']}`",
                 parse_mode="Markdown"
             )
         except Exception as e:
-            logger.error(f"Stats command error: {e}")
+            logger.error(f"Stats error: {e}")
 
-    # BOT OWNER COMMANDS: /broadcast
     async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user_id = update.effective_user.id
             bot_data = await db.get_bot(self.bot_id)
 
-            if bot_data["owner_id"] != user_id:
+            if not bot_data or bot_data.get("owner_id") != user_id:
                 return
 
             if not context.args:
-                await update.message.reply_text("⚠️ **Usage:** `/broadcast Your message here...`", parse_mode="Markdown")
+                await update.message.reply_text("⚠️ Usage: `/broadcast Your message here...`", parse_mode="Markdown")
                 return
 
             bc_text = " ".join(context.args)
             users = await db.get_all_bot_users(self.bot_id)
-            
             status_msg = await update.message.reply_text(f"📢 Starting broadcast to {len(users)} users...")
 
             success, failed = 0, 0
@@ -164,16 +201,13 @@ class ManagedBotHandler:
                 try:
                     await self.app.bot.send_message(chat_id=u["user_id"], text=bc_text)
                     success += 1
-                    await asyncio.sleep(0.04) # Prevent Flood limits
+                    await asyncio.sleep(0.04)
                 except Exception:
                     failed += 1
 
-            await status_msg.edit_text(f"✅ **Broadcast Completed!**\n\n🟢 Sent: {success}\n🔴 Failed: {failed}", parse_mode="Markdown")
+            await status_msg.edit_text(f"✅ **Broadcast Done!**\n\n🟢 Sent: {success}\n🔴 Failed: {failed}", parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Broadcast error: {e}")
-
-    async def admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await self.stats_command(update, context)
 
     async def handle_callbacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -185,9 +219,13 @@ class ManagedBotHandler:
                 await db.set_user_language(self.bot_id, query.from_user.id, lang_code)
                 texts = LANGUAGES.get(lang_code, LANGUAGES["en"])
                 await query.message.edit_text(f"✅ {texts['welcome']}\n\n🌐 Change language: /language")
+            elif query.data == "check_fj":
+                if await self.check_force_join(query.from_user.id):
+                    await query.message.edit_text("✅ Joined! Now send me any video link.")
+                else:
+                    await query.answer("❌ You haven't joined yet!", show_alert=True)
         except Exception as e:
             logger.error(f"Callback error: {e}")
 
-    # Prevent System Crashing on unexpected errors
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
-        logger.error(f"Exception while handling an update: {context.error}")
+        logger.error(f"Managed Bot Exception: {context.error}")
