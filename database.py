@@ -8,17 +8,14 @@ class Database:
         self.client = AsyncIOMotorClient(Config.MONGO_URI)
         self.db = self.client[Config.DB_NAME]
         
-        # Collections
         self.users = self.db.users
         self.bots = self.db.bots
         self.bot_users = self.db.bot_users
         self.downloads = self.db.downloads
         self.broadcasts = self.db.broadcasts
         self.settings = self.db.settings
-        self.channels = self.db.channels
 
     async def init_db(self):
-        # Create Indexes for fast querying
         await self.users.create_index("user_id", unique=True)
         await self.bots.create_index("bot_id", unique=True)
         await self.bots.create_index("owner_id")
@@ -26,7 +23,6 @@ class Database:
         await self.bot_users.create_index([("bot_id", 1), ("user_id", 1)], unique=True)
         await self.downloads.create_index([("bot_id", 1), ("timestamp", -1)])
 
-    # Main Bot User Operations
     async def get_or_create_user(self, user_id: int, username: str = None, full_name: str = None):
         user = await self.users.find_one({"user_id": user_id})
         if not user:
@@ -41,8 +37,7 @@ class Database:
             await self.users.insert_one(user)
         return user
 
-    # Managed Bot Operations
-    async def add_bot(self, bot_id: int, owner_id: int, name: str, username: str, token: str):
+    async def save_managed_bot(self, bot_id: int, owner_id: int, username: str, name: str, token: str):
         bot_doc = {
             "bot_id": bot_id,
             "owner_id": owner_id,
@@ -57,7 +52,7 @@ class Database:
                 "allow_audio": True
             }
         }
-        await self.bots.insert_one(bot_doc)
+        await self.bots.update_one({"bot_id": bot_id}, {"$set": bot_doc}, upsert=True)
 
     async def get_user_bots(self, owner_id: int):
         cursor = self.bots.find({"owner_id": owner_id})
@@ -78,7 +73,6 @@ class Database:
         await self.bot_users.delete_many({"bot_id": bot_id})
         await self.downloads.delete_many({"bot_id": bot_id})
 
-    # Stats Operations
     async def log_download(self, bot_id: int, user_id: int, platform: str, media_type: str):
         await self.downloads.insert_one({
             "bot_id": bot_id,
