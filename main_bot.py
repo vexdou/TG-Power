@@ -1,391 +1,171 @@
-import asyncio
-import logging
-
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-
-import config
-
-from database import (
-    add_user,
-    get_user_bots,
-    count_user_bots,
-    get_main_stats,
-    can_create_bot,
-    is_bot_creation_enabled,
-    toggle_bot_creation,
-    log_event,
+import psutil
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, MessageHandler,
+    ConversationHandler, filters, ContextTypes
 )
+from config import Config
+from database import db
+from bot_creator import bot_creator
+from bot_manager import bot_manager
 
-logger = logging.getLogger("TG-POWER.MAIN")
+# States for Bot Creation Conversation
+NAME, USERNAME = range(2)
 
-main_app = Client(
-    "main_saas_bot",
-    api_id=config.API_ID,
-    api_hash=config.API_HASH,
-    bot_token=config.BOT_TOKEN,
-    workers=16,
-)
+class MainBotPlatform:
+    def __init__(self):
+        self.app = Application.builder().token(Config.BOT_TOKEN).build()
+        self._setup_handlers()
 
-pending_create = set()
-pending_broadcast = {}
-
-def user_keyboard(user_id):
-    rows = [
-        [
-            InlineKeyboardButton("➕ Create New Bot", callback_data="create_bot"),
-            InlineKeyboardButton("📦 My Bots", callback_data="my_bots"),
-        ],
-        [InlineKeyboardButton("📊 My Statistics", callback_data="my_stats")],
-        [InlineKeyboardButton("📚 Help", callback_data="help")],
-    ]
-    if user_id in config.ADMIN_IDS:
-        rows.append([InlineKeyboardButton("👑 Admin Panel", callback_data="admin")])
-    return InlineKeyboardMarkup(rows)
-
-def admin_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
-            InlineKeyboardButton("🤖 All Bots", callback_data="admin_bots"),
-        ],
-        [
-            InlineKeyboardButton("👥 Users", callback_data="admin_users"),
-            InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
-        ],
-        [InlineKeyboardButton("🔐 Bot Creation", callback_data="admin_creation")],
-        [InlineKeyboardButton("🔙 Main Menu", callback_data="back")],
-    ])
-
-async def save_user(message):
-    if not message.from_user:
-        return
-    try:
-        await add_user(
-            message.from_user.id,
-            message.from_user.first_name or "",
-            message.from_user.username or "",
+    def _setup_handlers(self):
+        # Conversation handler for bot creation
+        conv_handler = ConversationHandler(
+            entry_points=[CallbackQueryHandler(self.start_bot_creation, pattern="^create_bot$")],
+            states={
+                NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.get_bot_name)],
+                USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.get_bot_username)],
+            },
+            fallbacks=[CommandHandler("cancel", self.cancel_creation)],
         )
-    except Exception:
-        logger.exception("Could not save user")
 
-@main_app.on_message(filters.private & filters.command("start"))
-async def start_handler(client, message):
-    logger.info("📩 /start received | user=%s",
-                message.from_user.id if message.from_user else "unknown")
-    await save_user(message)
-    await message.reply_text(
-        "👋 **Welcome to TG-Power!**\n\n"
-        "Create and manage your own Telegram downloader bot.",
-        reply_markup=user_keyboard(message.from_user.id),
-    )
+        self.app.add_handler(CommandHandler("start", self.start_command))
+        self.app.add_handler(CommandHandler("admin", self.main_admin_panel))
+        self.app.add_handler(conv_handler)
+        self.app.add_handler(CallbackQueryHandler(self.handle_callbacks))
 
-@main_app.on_message(filters.private & filters.command("admin"))
-async def admin_handler(client, message):
-    await save_user(message)
-    uid = message.from_user.id
-    if uid not in config.ADMIN_IDS:
-        await message.reply_text("⛔ Admin only.")
-        return
-    await message.reply_text("👑 **Main Admin Panel**", reply_markup=admin_keyboard())
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        await db.get_or_create_user(user.id, user.username, user.full_name)
 
-@main_app.on_message(filters.private & filters.command("cancel"))
-async def cancel_handler(client, message):
-    uid = message.from_user.id
-    pending_create.discard(uid)
-    pending_broadcast.pop(uid, None)
-    await message.reply_text("✅ Cancelled.", reply_markup=user_keyboard(uid))
+        keyboard = [
+            [InlineKeyboardButton("🤖 Create New Bot", callback_data="create_bot"), InlineKeyboardButton("🤖 My Bots", callback_data="my_bots")],
+            [InlineKeyboardButton("📊 My Statistics", callback_data="my_stats"), InlineKeyboardButton("⚙️ Settings", callback_data="settings")],
+            [InlineKeyboardButton("📚 Help", callback_data="help"), InlineKeyboardButton("👨‍💻 Support", callback_data="support")]
+        ]
+        
+        if user.id in Config.ADMIN_IDS:
+            keyboard.append([InlineKeyboardButton("👑 MAIN ADMIN PANEL", callback_data="main_admin")])
 
-@main_app.on_callback_query()
-async def callback_handler(client, query: CallbackQuery):
-    uid = query.from_user.id
-    data = query.data or ""
-    try:
+        await update.message.reply_text(
+            f"👋 Soo dhawoow {user.first_name}!\n\n"
+            f"Kani waa **Telegram Managed Bot Creation Platform**. Waxaad si toos ah oo otomaatig ah uga dhex sameaysan kartaa Telegram Bot kuu gaar ah oo soo dejiya muqaallada baraha bulshada.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    async def start_bot_creation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
         await query.answer()
-    except Exception:
-        pass
 
-    if data == "back":
-        await query.message.edit_text("🏠 **Main Menu**", reply_markup=user_keyboard(uid))
-        return
+        user_bots = await db.get_user_bots(query.from_user.id)
+        if len(user_bots) >= Config.MAX_BOTS_PER_USER and query.from_user.id not in Config.ADMIN_IDS:
+            await query.message.edit_text(f"❌ Waxaad gaartay xadka bot-yada kuu allowed-ka ah ({Config.MAX_BOTS_PER_USER}).")
+            return ConversationHandler.END
 
-    if data == "create_bot":
-        if not await is_bot_creation_enabled():
-            await query.message.edit_text(
-                "🔴 **Bot creation is currently disabled.**",
-                reply_markup=user_keyboard(uid),
+        await query.message.edit_text("🤖 **Bilaawga Bot Cusub**\n\nFadlan ii soo dir **Magaca** aad u rabto Bot-kaaga (musaal: Downloader Pro):")
+        return NAME
+
+    async def get_bot_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data["new_bot_name"] = update.message.text.strip()
+        await update.message.reply_text("✅ Magacu waa sax!\n\nHadda soo dir **Username-ka** bot-ka (waa in uu ku dhamaadaa 'bot', musaal: MyDownloaderBot):")
+        return USERNAME
+
+    async def get_bot_username(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        username = update.message.text.strip().replace("@", "")
+        context.user_data["new_bot_username"] = username
+        
+        status_msg = await update.message.reply_text("⏳ U diyaarinaya BotFather... Fadlan sug wax yar...")
+
+        # Ka abuur BotFather
+        result = await bot_creator.create_new_bot(context.user_data["new_bot_name"], username)
+
+        if not result["success"]:
+            await status_msg.edit_text(f"❌ Abuuristu waa ay fashilantay:\n`{result['error']}`", parse_mode="Markdown")
+            return ConversationHandler.END
+
+        # Kaydi Mongo
+        bot_id = result["bot_id"]
+        token = result["token"]
+        await db.add_bot(bot_id, update.effective_user.id, result["name"], result["username"], token)
+
+        # Bilaw Bot-ka
+        started = await bot_manager.start_bot_instance(bot_id, token)
+
+        if started:
+            keyboard = [
+                [InlineKeyboardButton("🚀 Open Bot", url=f"https://t.me/{result['username']}")],
+                [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+            ]
+            await status_msg.edit_text(
+                f"✅ **Bot Created Successfully!**\n\n"
+                f"🤖 **Name:** {result['name']}\n"
+                f"🔗 **Username:** @{result['username']}\n"
+                f"⚙️ Status: Running",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
             )
-            return
-        if not await can_create_bot(uid):
-            await query.message.edit_text(
-                "⛔ You do not have permission to create bots.",
-                reply_markup=user_keyboard(uid),
-            )
-            return
-
-        count = await count_user_bots(uid)
-        maximum = getattr(config, "MAX_BOTS_PER_USER", 5)
-        if count >= maximum:
-            await query.message.edit_text(
-                f"⛔ Maximum {maximum} bots reached.",
-                reply_markup=user_keyboard(uid),
-            )
-            return
-
-        pending_create.add(uid)
-        await query.message.edit_text(
-            "🤖 **Create New Bot**\n\n"
-            "Send:\n`Bot Name | BotUsernameBot`\n\n"
-            "The username must end with `bot`.\n"
-            "Send /cancel to cancel."
-        )
-        return
-
-    if data == "my_bots":
-        bots = await get_user_bots(uid)
-        if not bots:
-            text = "📦 **My Bots**\n\nYou have no managed bots."
         else:
-            lines = ["📦 **My Bots**", ""]
-            for bot in bots:
-                lines.append(
-                    f"🤖 @{bot.get('username', 'unknown')}\n"
-                    f"📡 {bot.get('status', 'unknown')}\n"
-                    f"👥 {bot.get('total_users', 0)} users\n"
-                    f"📥 {bot.get('total_downloads', 0)} downloads\n"
-                )
-            text = "\n".join(lines)
-        await query.message.edit_text(
-            text[:4000], reply_markup=user_keyboard(uid)
-        )
-        return
+            await status_msg.edit_text("⚠️ Bot-ka waa la abuuray laakiin waa lagu fashilmay in laga dhex bilaabo Bot Manager.")
 
-    if data == "my_stats":
-        bots = await get_user_bots(uid)
-        users = sum(int(b.get("total_users", 0)) for b in bots)
-        downloads = sum(int(b.get("total_downloads", 0)) for b in bots)
-        await query.message.edit_text(
-            "📊 **My Statistics**\n\n"
-            f"🤖 Bots: {len(bots)}\n"
-            f"👥 Users: {users}\n"
-            f"📥 Downloads: {downloads}",
-            reply_markup=user_keyboard(uid),
-        )
-        return
+        return ConversationHandler.END
 
-    if data == "help":
-        await query.message.edit_text(
-            "📚 **Help**\n\n"
-            "• Create a managed bot from this menu.\n"
-            "• Open your created bot and use /admin.\n"
-            "• Main admins can manage all bots and users.",
-            reply_markup=user_keyboard(uid),
-        )
-        return
+    async def cancel_creation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("🚫 Abuuristii bot-ka waa la kansalay.")
+        return ConversationHandler.END
 
-    if data == "admin":
-        if uid not in config.ADMIN_IDS:
-            return
-        await query.message.edit_text(
-            "👑 **Main Admin Panel**", reply_markup=admin_keyboard()
-        )
-        return
-
-    if uid not in config.ADMIN_IDS or not data.startswith("admin_"):
-        return
-
-    if data == "admin_stats":
-        stats = await get_main_stats()
-        await query.message.edit_text(
-            "📊 **Main Statistics**\n\n"
-            f"👥 Users: {stats.get('users', 0)}\n"
-            f"🤖 Bots: {stats.get('bots', 0)}\n"
-            f"📥 Downloads: {stats.get('downloads', 0)}",
-            reply_markup=admin_keyboard(),
-        )
-        return
-
-    if data == "admin_bots":
-        try:
-            from database import bots_col
-            bots = await bots_col.find(
-                {"status": {"$ne": "deleted"}}
-            ).sort("created_at", -1).to_list(length=100)
-
-            if not bots:
-                text = "🤖 **All Managed Bots**\n\nNo bots found."
-            else:
-                text = "\n".join(
-                    ["🤖 **All Managed Bots**", ""] +
-                    [
-                        f"@{b.get('username', 'unknown')} | "
-                        f"{b.get('status', 'unknown')} | "
-                        f"Owner: {b.get('owner_id', 'unknown')}"
-                        for b in bots
-                    ]
-                )
-            await query.message.edit_text(text[:4000], reply_markup=admin_keyboard())
-        except Exception as exc:
-            await query.message.edit_text(
-                f"❌ Could not load bots:\n`{str(exc)[:1000]}`",
-                reply_markup=admin_keyboard(),
-            )
-        return
-
-    if data == "admin_users":
-        try:
-            from database import users_col
-            total = await users_col.count_documents({})
-            await query.message.edit_text(
-                f"👥 **Users:** {total}", reply_markup=admin_keyboard()
-            )
-        except Exception as exc:
-            await query.message.edit_text(
-                f"❌ `{str(exc)[:1000]}`", reply_markup=admin_keyboard()
-            )
-        return
-
-    if data == "admin_creation":
-        enabled = await is_bot_creation_enabled()
-        await query.message.edit_text(
-            "🔐 **Bot Creation**\n\n"
-            f"Status: {'🟢 ENABLED' if enabled else '🔴 DISABLED'}",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("🟢 Enable", callback_data="creation_on"),
-                    InlineKeyboardButton("🔴 Disable", callback_data="creation_off"),
-                ],
-                [InlineKeyboardButton("🔙 Back", callback_data="admin")],
-            ]),
-        )
-        return
-
-    if data == "creation_on":
-        await toggle_bot_creation(True)
-        await query.message.edit_text(
-            "🟢 Bot creation enabled.", reply_markup=admin_keyboard()
-        )
-        return
-
-    if data == "creation_off":
-        await toggle_bot_creation(False)
-        await query.message.edit_text(
-            "🔴 Bot creation disabled.", reply_markup=admin_keyboard()
-        )
-        return
-
-    if data == "admin_broadcast":
-        pending_broadcast[uid] = "main"
-        await query.message.edit_text(
-            "📢 **Broadcast**\n\n"
-            "Send the message you want to broadcast.\n"
-            "Use /cancel to cancel."
-        )
-
-@main_app.on_message(
-    filters.private & ~filters.command(["start", "admin", "cancel"])
-)
-async def text_handler(client, message):
-    uid = message.from_user.id
-    await save_user(message)
-
-    if uid in pending_create:
-        pending_create.discard(uid)
-        raw = (message.text or "").strip()
-
-        if "|" not in raw:
-            await message.reply_text(
-                "❌ Invalid format.\n\n"
-                "Use:\n`My Downloader | MyDownloaderBot`"
-            )
+    async def main_admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        if user_id not in Config.ADMIN_IDS:
             return
 
-        bot_name, bot_username = [x.strip() for x in raw.split("|", 1)]
-        status = await message.reply_text("⏳ Creating your bot...")
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        all_bots = await db.get_all_active_bots()
 
-        try:
-            from bot_creator import create_bot_via_botfather
-            from database import register_bot
-            from bot_manager import start_managed_bot
-
-            token, final_username = await create_bot_via_bot(
-                bot_name, bot_username
-            )
-
-            await register_bot(
-                uid, token, bot_name, final_username, None
-            )
-
-            started = await start_managed_bot(
-                token, final_username, uid
-            )
-            if not started:
-                raise RuntimeError("Bot was created but could not be started.")
-
-            await log_event(
-                "bot_created",
-                owner_id=uid,
-                bot_username=final_username,
-            )
-
-            await status.edit_text(
-                "✅ **Bot Created Successfully!**\n\n"
-                f"🤖 @{final_username}\n"
-                f"🔗 https://t.me/{final_username}\n\n"
-                "Open the bot and send /admin.",
-                reply_markup=user_keyboard(uid),
-            )
-        except Exception as exc:
-            logger.exception("Bot creation failed")
-            await status.edit_text(
-                "❌ **Bot Creation Failed**\n\n"
-                f"`{str(exc)[:1200]}`",
-                reply_markup=user_keyboard(uid),
-            )
-        return
-
-    mode = pending_broadcast.get(uid)
-    if mode and uid in config.ADMIN_IDS:
-        pending_broadcast.pop(uid, None)
-        await message.reply_text("📢 Broadcast started...")
-
-        try:
-            from database import users_col
-            users = await users_col.find({}).to_list(length=200000)
-            sent = failed = 0
-
-            for user in users:
-                target = user.get("user_id")
-                if not target:
-                    continue
-                try:
-                    await message.copy(target)
-                    sent += 1
-                    await asyncio.sleep(0.05)
-                except Exception:
-                    failed += 1
-
-            await message.reply_text(
-                "📢 **Broadcast Finished**\n\n"
-                f"✅ Sent: {sent}\n❌ Failed: {failed}"
-            )
-        except Exception as exc:
-            await message.reply_text(
-                f"❌ Broadcast failed:\n`{str(exc)[:1000]}`"
-            )
-        return
-
-    await message.reply_text(
-        "Use the menu below:", reply_markup=user_keyboard(uid)
-    )
-
-@main_app.on_message(filters.private, group=1000)
-async def update_diagnostic(client, message):
-    try:
-        logger.info(
-            "📡 TELEGRAM UPDATE RECEIVED | user=%s | text=%r",
-            message.from_user.id if message.from_user else "unknown",
-            (message.text or message.caption or "")[:200],
+        text = (
+            f"👑 **MAIN ADMIN PANEL**\n\n"
+            f"🤖 Active Managed Bots: {len(all_bots)}\n"
+            f"💻 CPU Usage: {cpu}%\n"
+            f"🧠 RAM Usage: {ram}%\n"
+            f"⚙️ Dynamic Bot Engine: Running"
         )
-    except Exception:
-        logger.exception("Diagnostic handler error")
+
+        keyboard = [
+            [InlineKeyboardButton("🤖 All Managed Bots", callback_data="admin_all_bots")],
+            [InlineKeyboardButton("📢 Broadcast All Bots", callback_data="admin_bc_all")],
+            [InlineKeyboardButton("🔧 System Health", callback_data="admin_health")]
+        ]
+
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        else:
+            await update.callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    async def handle_callbacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        if query.data == "my_bots":
+            user_bots = await db.get_user_bots(query.from_user.id)
+            if not user_bots:
+                await query.message.edit_text("❌ Wali ma aadan abuurin wax Bot ah.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🤖 Create Bot", callback_data="create_bot")]]))
+                return
+
+            text = "🤖 **Bot-yadaada:**\n\n"
+            keyboard = []
+            for b in user_bots:
+                text += f"• @{b['username']} ({b['status']})\n"
+                keyboard.append([InlineKeyboardButton(f"⚙️ Manage @{b['username']}", url=f"https://t.me/{b['username']}?start=admin")])
+
+            keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="main_menu")])
+            await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+        elif query.data == "main_admin":
+            await self.main_admin_panel(update, context)
+
+    async def run(self):
+        await self.app.initialize()
+        await self.app.start()
+        await self.app.updater.start_polling(drop_pending_updates=True)
+
+main_bot = MainBotPlatform()
