@@ -37,6 +37,34 @@ class Database:
             await self.users.insert_one(user)
         return user
 
+    # Managed Bot User Operations
+    async def get_bot_user(self, bot_id: int, user_id: int):
+        return await self.bot_users.find_one({"bot_id": bot_id, "user_id": user_id})
+
+    async def save_bot_user(self, bot_id: int, user_id: int, username: str, full_name: str, language: str = None):
+        update_data = {
+            "username": username,
+            "full_name": full_name
+        }
+        if language:
+            update_data["language"] = language
+
+        await self.bot_users.update_one(
+            {"bot_id": bot_id, "user_id": user_id},
+            {"$set": update_data, "$setOnInsert": {"joined_at": datetime.now(timezone.utc)}},
+            upsert=True
+        )
+
+    async def set_user_language(self, bot_id: int, user_id: int, language: str):
+        await self.bot_users.update_one(
+            {"bot_id": bot_id, "user_id": user_id},
+            {"$set": {"language": language}}
+        )
+
+    async def get_all_bot_users(self, bot_id: int):
+        cursor = self.bot_users.find({"bot_id": bot_id})
+        return await cursor.to_list(length=100000)
+
     async def save_managed_bot(self, bot_id: int, owner_id: int, username: str, name: str, token: str):
         bot_doc = {
             "bot_id": bot_id,
@@ -67,11 +95,6 @@ class Database:
 
     async def update_bot_status(self, bot_id: int, status: str):
         await self.bots.update_one({"bot_id": bot_id}, {"$set": {"status": status}})
-
-    async def delete_bot(self, bot_id: int):
-        await self.bots.delete_one({"bot_id": bot_id})
-        await self.bot_users.delete_many({"bot_id": bot_id})
-        await self.downloads.delete_many({"bot_id": bot_id})
 
     async def log_download(self, bot_id: int, user_id: int, platform: str, media_type: str):
         await self.downloads.insert_one({
