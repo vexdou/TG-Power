@@ -37,7 +37,6 @@ class ManagedBotHandler:
         user = update.effective_user
         bot_data = await db.get_bot(self.bot_id)
         
-        # Diwaangeli isticmaalaha bot-ka
         await db.bot_users.update_one(
             {"bot_id": self.bot_id, "user_id": user.id},
             {"$set": {"username": user.username, "full_name": user.full_name}},
@@ -46,7 +45,7 @@ class ManagedBotHandler:
 
         if not await self.check_force_join(user.id, bot_data):
             buttons = [
-                [InlineKeyboardButton("📢 Channel 1", url=f"https://t.me/{ch.replace('@','')}")]
+                [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")]
                 for ch in bot_data.get("force_join_channels", [])
             ]
             buttons.append([InlineKeyboardButton("🔄 Check Membership", callback_data="check_fj")])
@@ -57,8 +56,8 @@ class ManagedBotHandler:
             return
 
         await update.message.reply_text(
-            f"Soolaalama 👋 Soo dhawoow {user.first_name}!\n\n"
-            f"Keliya iisoo dir Link-ga video-ga ama audio-ga aad rabto in aad soo dejiso (TikTok, YouTube, FB, IG, Twitter, Snap, Pinterest)."
+            f"👋 Soo dhawoow {user.first_name}!\n\n"
+            f"Iisoo dir Link-ga video-ga ama audio-ga aad rabto in aad soo dejiso (TikTok, YouTube, FB, IG, Twitter, Snap, Pinterest)."
         )
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,12 +77,12 @@ class ManagedBotHandler:
         result = await downloader.download(url, user_id)
 
         if not result["success"]:
-            await status_msg.edit_text(f"❌ Garasho la'aan ama cilad: {result['error']}")
+            await status_msg.edit_text(f"❌ Cilad: {result['error']}")
             return
 
         file_path = result["file_path"]
         try:
-            await status_msg.edit_text("📤 Muuqaalka waa la soo dejinayaa oo waxaa loo soo dirayaa Telegram...")
+            await status_msg.edit_text("📤 Waa la soo dejiyay, waxaa loo soo dirayaa Telegram...")
             if result["media_type"] == "video":
                 with open(file_path, "rb") as video_file:
                     await update.message.reply_video(video=video_file, caption=f"✅ {result['title']}")
@@ -94,7 +93,7 @@ class ManagedBotHandler:
             await db.log_download(self.bot_id, user_id, result["platform"], result["media_type"])
             await status_msg.delete()
         except Exception as e:
-            await status_msg.edit_text(f"❌ Cilad Telegram API: {str(e)}")
+            await status_msg.edit_text(f"❌ Telegram API Error: {str(e)}")
         finally:
             downloader.cleanup(file_path)
 
@@ -128,13 +127,13 @@ class ManagedBotHandler:
             if await self.check_force_join(query.from_user.id, bot_data):
                 await query.message.edit_text("✅ Waad ku biirtay! Hadda ii soo dir link-ga aad rabto.")
             else:
-                await query.answer("❌ Wali ma aadan ku biirin dhammaan kanaalada!", show_alert=True)
+                await query.answer("❌ Wali ma aadan ku biirin kanaalada!", show_alert=True)
         elif query.data == "owner_stats":
             stats = await db.get_bot_stats(self.bot_id)
             await query.message.edit_text(
                 f"📊 **Bot Statistics**\n\n"
                 f"👥 Users: {stats['total_users']}\n"
-                f"📥 Total Downloads: {stats['total_downloads']}\n"
+                f"📥 Downloads: {stats['total_downloads']}\n"
                 f"🎬 Videos: {stats['videos']}\n"
                 f"🎵 Audio: {stats['audio']}"
             )
