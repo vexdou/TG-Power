@@ -149,7 +149,6 @@ class Database:
                 },
                 "$setOnInsert": {
                     "bot_id": bot_id,
-                    "force_join_channels": [],
                     "created_at": now,
                     "last_started_at": None,
                     "last_stopped_at": None,
