@@ -27,6 +27,7 @@ from telegram.error import TelegramError, Forbidden
 from config import Config
 from database import db
 from bot_manager import bot_manager
+from force_join import force_join_checker
 
 logger = logging.getLogger(__name__)
 
@@ -38,21 +39,19 @@ LANGUAGES = {
 }
 
 ADMIN_BUTTONS = [
-    "📊 Dashboard", "🤖 All Bots",
-    "🔎 Search Bot", "👥 Users",
-    "👥 Bot Users", "📥 Downloads",
-    "📢 Broadcast All", "📣 Broadcast Bot",
-    "🔐 Force Join", "⚙️ Bot Creation",
-    "▶️ Start Bot", "⏹ Stop Bot",
-    "🔄 Restart Bot", "🗑 Delete Bot",
-    "❤️ Bot Health", "🧰 System Settings",
-    "⏱ Max Video", "📦 Max File",
-    "🛠 Maintenance", "♻️ Reload Bots",
-    "🚨 Bot Errors", "📈 Download Stats",
-    "📋 User Export", "🧹 Clear Downloads",
-    "🧽 Clear Pending", "🌐 Language",
-    "ℹ️ About", "❓ Help",
-    "🔃 Refresh", "🔙 User Panel",
+    "📊 Dashboard", "🤖 All Bots", "🔎 Search Bot", "👥 Users",
+    "👥 Bot Users", "👑 Bot Owners", "📥 Downloads", "📈 Download Stats",
+    "❌ Failed Downloads", "🕘 Recent Downloads", "📢 Broadcast All", "📣 Broadcast Bot",
+    "👀 Broadcast Preview", "🔐 Force Join", "🔎 Force Join Check", "⚙️ Bot Creation",
+    "▶️ Start Bot", "⏹ Stop Bot", "🔄 Restart Bot", "🗑 Delete Bot",
+    "❤️ Bot Health", "🚨 Bot Errors", "♻️ Reload Bots", "🛠 Maintenance",
+    "🧰 System Settings", "⏱ Max Video", "📦 Max File", "🌐 Default Language",
+    "📋 User Export", "🤖 Bot Export", "🧹 Clear Downloads", "🧽 Clear Pending",
+    "🧼 Cleanup Temp", "🗄 Database Status", "📡 Queue Status", "⏲ Uptime",
+    "🔒 Security", "🧑‍💼 Admin ID", "📊 Platform Stats", "🔄 Reset Settings",
+    "📜 Activity Log", "💾 Backup Info", "📦 Bot Capacity", "🔔 Notifications",
+    "ℹ️ About", "❓ Help", "🔃 Refresh", "🔙 User Panel",
+    "🧪 Test System", "📍 Channel Settings",
 ]
 
 
@@ -119,6 +118,7 @@ def language_keyboard():
 
 class MainSaaSBot:
     def __init__(self):
+        self.started_at = None
         self.app = Application.builder().token(Config.BOT_TOKEN).build()
         self._setup_handlers()
 
@@ -145,6 +145,7 @@ class MainSaaSBot:
             return
         try:
             await self.app.initialize()
+            await force_join_checker.start()
             await self.app.bot.delete_webhook(drop_pending_updates=True)
             await self.app.start()
             if self.app.updater is None:
@@ -156,6 +157,7 @@ class MainSaaSBot:
                 timeout=30,
             )
             me = await self.app.bot.get_me()
+            self.started_at = datetime.now(timezone.utc)
             logger.info("👑 Main SaaS Bot Online: @%s", me.username)
         except Exception:
             logger.exception("🔴 Main SaaS Controller failed to start.")
@@ -170,6 +172,10 @@ class MainSaaSBot:
             except Exception:
                 pass
             try:
+                await force_join_checker.stop()
+            except Exception:
+                pass
+            try:
                 await self.app.shutdown()
             except Exception:
                 pass
@@ -181,6 +187,7 @@ class MainSaaSBot:
                 await self.app.updater.stop()
             if self.app.running:
                 await self.app.stop()
+            await force_join_checker.stop()
             await self.app.shutdown()
         except Exception:
             logger.exception("Main controller shutdown error")
@@ -212,9 +219,11 @@ class MainSaaSBot:
             "• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n"
             "• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter\n\n"
             "🎵 Every downloaded video has a MUSIC button to convert it to MP3.\n"
+            "📢 MP3 files receive a CHANNEL button.\n\n"
             "➕ Create New Bot — create your own downloader bot\n"
             "🤖 My Bots — manage your bots\n"
-            "🌐 Language — choose your language\n\n",
+            "🌐 Language — choose your language\n\n"
+            "If you are an administrator, use the 👑 Admin Panel button below.",
             reply_markup=main_keyboard(user.id),
         )
 
@@ -389,6 +398,7 @@ class MainSaaSBot:
         text = "🔐 GLOBAL FORCE JOIN\n\nThis list applies to EVERY managed bot.\nMaximum: 5 channels.\n\n"
         text += "\n".join(f"{i+1}. {c}" for i, c in enumerate(channels)) if channels else "No channels configured."
         rows = []
+        rows.append([InlineKeyboardButton("🔎 Verify Main Bot Admin Access", callback_data="fj:verify")])
         if len(channels) < 5:
             rows.append([InlineKeyboardButton("➕ Add Channel", callback_data="fj:add")])
         for i, channel in enumerate(channels):
@@ -397,19 +407,51 @@ class MainSaaSBot:
             rows.append([InlineKeyboardButton("🧹 Remove ALL", callback_data="fj:clear")])
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(rows) if rows else None)
 
+    async def verify_force_join_channels(self, update):
+        channels = await db.get_global_force_join_channels()
+        if not channels:
+            await update.message.reply_text("🔐 No Force Join channels configured.", reply_markup=admin_keyboard())
+            return
+        results = await force_join_checker.verify_admin_channels(channels)
+        lines = ["🔎 MAIN BOT FORCE-JOIN CHECK\n"]
+        for row in results:
+            icon = "🟢" if row["ok"] else "🔴"
+            lines.append(f"{icon} {row['channel']} — {row['status']}")
+            if row.get("error"):
+                lines.append(f"   {row['error']}")
+        lines.append("\nOnly the MAIN bot needs to be admin in these channels. Managed downloader bots do not.")
+        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+
     async def save_force_join_channel(self, update, context):
         value = (update.message.text or "").strip()
-        ok, channels = await db.add_global_force_join_channel(value)
         context.user_data.clear()
+        if not value:
+            await update.message.reply_text("❌ Send a channel username such as @MyChannel.", reply_markup=admin_keyboard())
+            return
+
+        # The MAIN bot must be an administrator/owner before the channel can be enabled.
+        verification = await force_join_checker.verify_admin_channels([value])
+        if not verification or not verification[0]["ok"]:
+            error = (verification[0].get("error") if verification else None) or "Main bot cannot access this channel."
+            await update.message.reply_text(
+                "❌ Channel was NOT added.\n\n"
+                "Make the MAIN bot an administrator in the channel first.\n"
+                f"Details: {error}",
+                reply_markup=admin_keyboard(),
+            )
+            return
+
+        ok, channels = await db.add_global_force_join_channel(value)
         if not ok:
             await update.message.reply_text(
-                "❌ Channel was not added. Check the format or the 5-channel limit.",
+                "❌ Channel was not added. It may already exist or the 5-channel limit was reached.",
                 reply_markup=admin_keyboard(),
             )
             return
         await update.message.reply_text(
             "✅ Channel added to GLOBAL Force Join.\n\n"
-            "It now applies to all managed bots.",
+            "Only the MAIN bot checks membership. Managed downloader bots do NOT need channel admin rights.\n"
+            f"Configured channels: {len(channels)}/5",
             reply_markup=admin_keyboard(),
         )
 
@@ -690,6 +732,10 @@ class MainSaaSBot:
             if state == "broadcast_bot":
                 await self.perform_broadcast(update.message, context, context.user_data.get("broadcast_bot_id"))
                 return
+            if state == "broadcast_preview":
+                await update.message.reply_text("👀 BROADCAST PREVIEW\n\n" + ((update.message.text or update.message.caption or "").strip() or "[media message]"), reply_markup=admin_keyboard())
+                context.user_data.clear()
+                return
             if state == "search_bot":
                 await self.search_bot(update, context)
                 return
@@ -730,10 +776,16 @@ class MainSaaSBot:
             "🔎 Search Bot": lambda: self.search_bot_prompt(update, context),
             "👥 Users": lambda: self.show_users(update),
             "👥 Bot Users": lambda: self.show_bot_users(update),
+            "👑 Bot Owners": lambda: self.show_bot_owners(update),
             "📥 Downloads": lambda: self.show_downloads(update),
+            "📈 Download Stats": lambda: self.show_download_stats(update),
+            "❌ Failed Downloads": lambda: self.show_failed_downloads(update),
+            "🕘 Recent Downloads": lambda: self.show_recent_downloads(update),
             "📢 Broadcast All": lambda: self.broadcast_all_prompt(update, context),
             "📣 Broadcast Bot": lambda: self.broadcast_bot_prompt(update),
+            "👀 Broadcast Preview": lambda: self.broadcast_preview(update, context),
             "🔐 Force Join": lambda: self.force_join_menu(update),
+            "🔎 Force Join Check": lambda: self.verify_force_join_channels(update),
             "⚙️ Bot Creation": lambda: self.creation_setting(update),
             "▶️ Start Bot": lambda: self.choose_bot(update, "start"),
             "⏹ Stop Bot": lambda: self.choose_bot(update, "stop"),
@@ -746,19 +798,132 @@ class MainSaaSBot:
             "🛠 Maintenance": lambda: self.maintenance_setting(update),
             "♻️ Reload Bots": lambda: self.reload_bots(update),
             "🚨 Bot Errors": lambda: self.bot_errors(update),
-            "📈 Download Stats": lambda: self.show_download_stats(update),
             "📋 User Export": lambda: self.user_export(update),
+            "🤖 Bot Export": lambda: self.bot_export(update),
+            "🧼 Cleanup Temp": lambda: self.cleanup_temp(update),
+            "🗄 Database Status": lambda: self.database_status(update),
+            "📡 Queue Status": lambda: self.queue_status(update),
+            "⏲ Uptime": lambda: self.uptime_status(update),
+            "🔒 Security": lambda: self.security_status(update),
+            "🧑‍💼 Admin ID": lambda: self.admin_id_status(update),
+            "📊 Platform Stats": lambda: self.platform_stats(update),
+            "🔄 Reset Settings": lambda: self.reset_settings(update),
+            "📜 Activity Log": lambda: self.activity_log(update),
+            "💾 Backup Info": lambda: self.backup_info(update),
+            "📦 Bot Capacity": lambda: self.bot_capacity(update),
+            "🔔 Notifications": lambda: self.notifications_status(update),
             "🧹 Clear Downloads": lambda: self.clear_downloads(update),
             "🧽 Clear Pending": lambda: self.clear_pending(update),
+            "🌐 Default Language": lambda: self.language_command(update, context),
             "🌐 Language": lambda: self.language_command(update, context),
             "ℹ️ About": lambda: update.message.reply_text("ℹ️ TG-Power SaaS Admin Panel — global control for bots, users, downloads, force join and platform settings.", reply_markup=admin_keyboard()),
             "❓ Help": lambda: update.message.reply_text("❓ Use the 30-button admin panel to manage every part of the platform.", reply_markup=admin_keyboard()),
             "🔃 Refresh": lambda: self.show_dashboard(update),
             "🔙 User Panel": lambda: update.message.reply_text("👤 User Panel", reply_markup=main_keyboard(uid)),
+            "🧪 Test System": lambda: self.show_health(update),
+            "📍 Channel Settings": lambda: update.message.reply_text("📍 CHANNEL SETTINGS\n\nMP3 files use the CHANNEL button to open: https://t.me/downloadermain\n\nForce Join channels are managed separately under 🔐 Force Join.", reply_markup=admin_keyboard()),
         }
         action = actions.get(text)
         if action:
             await action()
+
+    async def show_bot_owners(self, update):
+        bots = await db.get_all_bots()
+        owners = {}
+        for bot in bots:
+            owners.setdefault(bot.get("owner_id"), 0)
+            owners[bot.get("owner_id")] += 1
+        lines = ["👑 BOT OWNERS\n"] + [f"• {owner}: {count} bot(s)" for owner, count in owners.items()]
+        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+
+    async def show_failed_downloads(self, update):
+        rows = await db.downloads.find({"status": "failed"}).sort("created_at", -1).to_list(length=30)
+        lines = ["❌ FAILED DOWNLOADS\n"]
+        for row in rows:
+            lines.append(f"• bot={row.get('bot_id')} user={row.get('user_id')}\n  {row.get('url','')}")
+        if len(lines) == 1:
+            lines.append("No failed downloads.")
+        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+
+    async def show_recent_downloads(self, update):
+        rows = await db.downloads.find({}).sort("created_at", -1).to_list(length=30)
+        lines = ["🕘 RECENT DOWNLOADS\n"]
+        for row in rows:
+            lines.append(f"• {row.get('media_type','video')} | bot={row.get('bot_id')} | user={row.get('user_id')} | {row.get('status')}")
+        if len(lines) == 1:
+            lines.append("No downloads yet.")
+        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+
+    async def broadcast_preview(self, update, context):
+        context.user_data["state"] = "broadcast_preview"
+        await update.message.reply_text("👀 Send the text/media and I will show you the broadcast preview without sending it.")
+
+    async def bot_export(self, update):
+        bots = await db.get_all_bots()
+        text = "BOT_ID,USERNAME,OWNER_ID,STATUS\n"
+        for b in bots:
+            text += f"{b.get('bot_id')},{b.get('username','')},{b.get('owner_id')},{b.get('status','')}\n"
+        await update.message.reply_text("🤖 BOT EXPORT\n\n" + text[:3800], reply_markup=admin_keyboard())
+
+    async def cleanup_temp(self, update):
+        removed = 0
+        root = Config.DOWNLOAD_DIR
+        if os.path.isdir(root):
+            for name in os.listdir(root):
+                path = os.path.join(root, name)
+                try:
+                    if os.path.isfile(path):
+                        os.remove(path); removed += 1
+                except OSError:
+                    pass
+        await update.message.reply_text(f"🧼 Temporary download cleanup complete. Removed: {removed}", reply_markup=admin_keyboard())
+
+    async def database_status(self, update):
+        try:
+            await db.client.admin.command("ping")
+            text = "🟢 MongoDB connected"
+        except Exception as exc:
+            text = f"🔴 MongoDB error: {exc}"
+        await update.message.reply_text(f"🗄 DATABASE STATUS\n\n{text}", reply_markup=admin_keyboard())
+
+    async def queue_status(self, update):
+        pending = await db.pending_downloads.count_documents({})
+        starting = len(bot_manager.starting_bots)
+        running = len(bot_manager.running_bots)
+        await update.message.reply_text(f"📡 QUEUE STATUS\n\nPending Force Join: {pending}\nStarting bots: {starting}\nRunning bots: {running}", reply_markup=admin_keyboard())
+
+    async def uptime_status(self, update):
+        started = getattr(self, "started_at", None)
+        value = "unknown" if not started else str(datetime.now(timezone.utc) - started).split('.')[0]
+        await update.message.reply_text(f"⏲ PLATFORM UPTIME\n\n{value}", reply_markup=admin_keyboard())
+
+    async def security_status(self, update):
+        await update.message.reply_text("🔒 SECURITY\n\n• Admin access uses OWNER_ID + ADMIN_IDS\n• Force Join is checked by the MAIN bot token\n• Managed bots do not need channel admin rights\n• Bot tokens are stored server-side and never shown to users.", reply_markup=admin_keyboard())
+
+    async def admin_id_status(self, update):
+        await update.message.reply_text(f"🧑‍💼 ADMIN IDS\n\nOWNER_ID: {Config.OWNER_ID}\nADMIN_IDS: {', '.join(map(str, Config.ADMIN_IDS)) or 'none'}", reply_markup=admin_keyboard())
+
+    async def platform_stats(self, update):
+        stats = await db.get_global_stats()
+        await update.message.reply_text("📊 PLATFORM STATS\n\n" + "\n".join(f"{k}: {v}" for k,v in stats.items()), reply_markup=admin_keyboard())
+
+    async def reset_settings(self, update):
+        for key in ["maintenance_mode", "bot_creation_enabled", "global_force_join_channels"]:
+            await db.delete_system_setting(key)
+        await update.message.reply_text("🔄 Global settings reset to defaults. Force Join is now empty and bot creation is enabled by default.", reply_markup=admin_keyboard())
+
+    async def activity_log(self, update):
+        await update.message.reply_text("📜 ACTIVITY LOG\n\nUse Render logs for live process logs. MongoDB stores bot/download status and errors.", reply_markup=admin_keyboard())
+
+    async def backup_info(self, update):
+        await update.message.reply_text("💾 BACKUP INFO\n\nDatabase: MongoDB\nBot records, users, downloads and global settings are stored there. Use MongoDB Atlas backup/restore for production backups.", reply_markup=admin_keyboard())
+
+    async def bot_capacity(self, update):
+        total = await db.count_bots()
+        await update.message.reply_text(f"📦 BOT CAPACITY\n\nManaged bots in database: {total}\nThe platform has no artificial 1M-bot UI limit; actual Telegram/API/hosting limits still apply.", reply_markup=admin_keyboard())
+
+    async def notifications_status(self, update):
+        await update.message.reply_text("🔔 NOTIFICATIONS\n\nAdmin notifications are currently represented by Render logs and bot status/error records.", reply_markup=admin_keyboard())
 
     async def _prompt_simple(self, update, context, state, text):
         context.user_data["state"] = state
@@ -878,6 +1043,16 @@ class MainSaaSBot:
             await self.delete_managed_bot(query, int(data.split(":")[1]))
             return
 
+        if data == "fj:verify":
+            channels = await db.get_global_force_join_channels()
+            results = await force_join_checker.verify_admin_channels(channels)
+            lines = ["🔎 MAIN BOT FORCE-JOIN CHECK\n"]
+            for row in results:
+                lines.append(f"{'🟢' if row['ok'] else '🔴'} {row['channel']} — {row['status']}")
+                if row.get('error'):
+                    lines.append(f"   {row['error']}")
+            await query.edit_message_text("\n".join(lines)[:4000])
+            return
         if data == "fj:add":
             context.user_data["state"] = "force_add"
             await query.edit_message_text("➕ Send channel username, for example @MyChannel.")
