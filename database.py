@@ -381,6 +381,74 @@ class Database:
     async def clear_pending_download(self, bot_id: int, user_id: int):
         await self.pending_downloads.delete_one({"bot_id": bot_id, "user_id": user_id})
 
+    # ---------- Premium / Stars ----------
+    async def get_premium_prices(self):
+        default = {"1m": 100, "3m": 300, "6m": 600, "1y": 1000}
+        value = await self.get_system_setting("premium_prices", default)
+        if not isinstance(value, dict):
+            value = default
+        return {k: int(value.get(k, v)) for k, v in default.items()}
+
+    async def set_premium_prices(self, prices: dict):
+        current = await self.get_premium_prices()
+        for key in current:
+            if key in prices:
+                current[key] = max(1, int(prices[key]))
+        await self.set_system_setting("premium_prices", current)
+        return current
+
+    async def get_bot_premium(self, bot_id: int):
+        bot = await self.get_bot(bot_id)
+        return (bot or {}).get("premium", {}) or {}
+
+    async def is_bot_premium(self, bot_id: int):
+        premium = await self.get_bot_premium(bot_id)
+        until = premium.get("until")
+        if not premium.get("active") or until is None:
+            return False
+        return until > self.now()
+
+    async def activate_bot_premium(self, bot_id: int, owner_id: int, plan: str, days: int, stars: int):
+        from datetime import timedelta
+        current = (await self.get_bot_premium(bot_id) or {}).get("until")
+        start = current if current and current > self.now() else self.now()
+        until = start + timedelta(days=days)
+        await self.bots.update_one(
+            {"bot_id": bot_id, "owner_id": owner_id},
+            {"$set": {
+                "premium": {
+                    "active": True, "plan": plan, "stars": int(stars),
+                    "owner_id": owner_id, "until": until, "updated_at": self.now()
+                },
+                "updated_at": self.now(),
+            }}
+        )
+        return until
+
+    async def grant_bot_premium(self, bot_id: int, days: int, admin_id: int):
+        bot = await self.get_bot(bot_id)
+        if not bot:
+            return None
+        current = (bot.get("premium") or {}).get("until")
+        start = current if current and current > self.now() else self.now()
+        from datetime import timedelta
+        until = start + timedelta(days=days)
+        await self.bots.update_one({"bot_id": bot_id}, {"$set": {
+            "premium": {"active": True, "plan": "admin_grant", "stars": 0, "owner_id": bot.get("owner_id"), "until": until, "granted_by": admin_id, "updated_at": self.now()},
+            "updated_at": self.now(),
+        }})
+        return until
+
+    async def get_premium_bots(self):
+        return await self.bots.find({"premium.active": True}).sort("premium.until", DESCENDING).to_list(length=None)
+
+    async def set_bot_premium_setting(self, bot_id: int, key: str, value: Any):
+        await self.bots.update_one({"bot_id": bot_id}, {"$set": {f"premium_settings.{key}": value, "updated_at": self.now()}})
+
+    async def get_bot_premium_settings(self, bot_id: int):
+        bot = await self.get_bot(bot_id)
+        return (bot or {}).get("premium_settings", {}) or {}
+
     # ---------- Creation/settings ----------
     async def is_bot_creation_enabled(self):
         return bool(await self.get_system_setting("bot_creation_enabled", True))
