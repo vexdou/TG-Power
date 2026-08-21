@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+
 from aiohttp import web
 
 from database import db
@@ -9,7 +10,7 @@ from main_bot import main_bot
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
+    level=os.getenv("LOG_LEVEL", "INFO"),
 )
 logger = logging.getLogger("TG-Power")
 
@@ -25,7 +26,7 @@ async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
 
-    port = int(os.environ.get("PORT", "8080"))
+    port = int(os.environ.get("PORT", "10000"))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
@@ -41,14 +42,19 @@ async def main():
     await db.connect()
 
     logger.info("Starting Main SaaS Controller Bot...")
-    await main_bot.start_bot()
+    await main_bot.start_controller()
 
     logger.info("Loading Active Managed Bots...")
     await bot_manager.load_and_start_all()
 
     logger.info("✅ TG-Power Platform is FULLY ACTIVE and listening!")
 
-    await asyncio.Event().wait()
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await bot_manager.stop_all()
+        await main_bot.stop_controller()
+        await db.close()
 
 
 if __name__ == "__main__":
