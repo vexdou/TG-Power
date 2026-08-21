@@ -8,6 +8,10 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: OWNER_ID
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
       - key: API_ID
         sync: false
       - key: API_HASH
@@ -16,9 +20,9 @@ services:
         sync: false
       - key: MONGO_URI
         sync: false
-      - key: ADMIN_IDS
+      - key: DB_NAME
+        value: tg_power_db
+      - key: YOUTUBE_COOKIES_BASE64
         sync: false
-      - key: RENDER_URL
+      - key: YOUTUBE_PO_TOKEN
         sync: false
-      - key: ENABLE_BOTFATHER_AUTOMATION
-        value: "true"
