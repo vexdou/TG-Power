@@ -764,3 +764,6 @@ class MainSaaSBot:
 
 
 # main.py imports MainSaaSBot from this module.
+
+# Backward-compatible singleton expected by main.py
+main_bot = MainSaaSBot()
