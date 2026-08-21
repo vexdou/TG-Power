@@ -1,7 +1,10 @@
+
 import asyncio
 import logging
+import os
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -23,71 +26,61 @@ LANGUAGES = {
         "name": "English 🇬🇧",
         "welcome": "👋 Welcome! Send me a video link from YouTube, TikTok, Facebook, Pinterest, Instagram, Snapchat or X/Twitter.",
         "invalid": "❌ Please send a valid link.",
-        "downloading": "⏳ Downloading... Please wait.",
-        "error": "❌ Error occurred:",
+        "error": "❌ Error occurred.",
     },
     "so": {
         "name": "Soomaali 🇸🇴",
         "welcome": "👋 Soo dhawoow! Ii soo dir link video ah oo ka socda TikTok, Facebook, YouTube, Pinterest, Instagram, Snapchat ama X/Twitter.",
         "invalid": "❌ Fadlan dir link sax ah.",
-        "downloading": "⏳ Soo dejintu way socotaa... Fadlan sug.",
-        "error": "❌ Cilad ayaa dhacday:",
+        "error": "❌ Cilad ayaa dhacday.",
     },
     "ar": {
         "name": "العربية 🇸🇦",
         "welcome": "👋 أهلاً بك! أرسل رابط فيديو من YouTube أو TikTok أو Facebook أو Pinterest أو Instagram أو Snapchat أو X.",
         "invalid": "❌ يرجى إرسال رابط صحيح.",
-        "downloading": "⏳ جاري التحميل... يرجى الانتظار.",
-        "error": "❌ حدث خطأ:",
+        "error": "❌ حدث خطأ.",
     },
     "es": {
         "name": "Español 🇪🇸",
-        "welcome": "👋 ¡Bienvenido! Envíame un enlace de video de una plataforma compatible.",
+        "welcome": "👋 ¡Bienvenido! Envíame un enlace de vídeo de una plataforma compatible.",
         "invalid": "❌ Por favor envía un enlace válido.",
-        "downloading": "⏳ Descargando... Por favor espera.",
-        "error": "❌ Ocurrió un error:",
+        "error": "❌ Ocurrió un error.",
     },
     "fr": {
         "name": "Français 🇫🇷",
         "welcome": "👋 Bienvenue ! Envoyez un lien vidéo depuis une plateforme prise en charge.",
         "invalid": "❌ Veuillez envoyer un lien valide.",
-        "downloading": "⏳ Téléchargement en cours...",
-        "error": "❌ Une erreur est survenue :",
+        "error": "❌ Une erreur est survenue.",
     },
     "tr": {
         "name": "Türkçe 🇹🇷",
         "welcome": "👋 Hoş geldiniz! Desteklenen bir platformdan video bağlantısı gönderin.",
         "invalid": "❌ Lütfen geçerli bir bağlantı gönderin.",
-        "downloading": "⏳ İndiriliyor...",
-        "error": "❌ Bir hata oluştu:",
+        "error": "❌ Bir hata oluştu.",
     },
     "de": {
         "name": "Deutsch 🇩🇪",
         "welcome": "👋 Willkommen! Senden Sie einen Videolink von einer unterstützten Plattform.",
         "invalid": "❌ Bitte senden Sie einen gültigen Link.",
-        "downloading": "⏳ Herunterladen...",
-        "error": "❌ Ein Fehler ist aufgetreten:",
+        "error": "❌ Ein Fehler ist aufgetreten.",
     },
     "ru": {
         "name": "Русский 🇷🇺",
         "welcome": "👋 Добро пожаловать! Отправьте ссылку на видео с поддерживаемой платформы.",
         "invalid": "❌ Пожалуйста, отправьте действующую ссылку.",
-        "downloading": "⏳ Скачивание...",
-        "error": "❌ Произошла ошибка:",
+        "error": "❌ Произошла ошибка.",
     },
     "hi": {
         "name": "हिन्दी 🇮🇳",
         "welcome": "👋 स्वागत है! किसी समर्थित प्लेटफ़ॉर्म का वीडियो लिंक भेजें।",
         "invalid": "❌ कृपया एक मान्य लिंक भेजें।",
-        "downloading": "⏳ डाउनलोड हो रहा है...",
-        "error": "❌ त्रुटि:",
+        "error": "❌ त्रुटि।",
     },
     "pt": {
         "name": "Português 🇵🇹",
         "welcome": "👋 Bem-vindo! Envie um link de vídeo de uma plataforma suportada.",
         "invalid": "❌ Por favor envie um link válido.",
-        "downloading": "⏳ Baixando...",
-        "error": "❌ Ocorreu um erro:",
+        "error": "❌ Ocorreu um erro.",
     },
 }
 
@@ -134,15 +127,19 @@ class ManagedBotHandler:
 
     @staticmethod
     def get_channel_keyboard():
+        # CHANNEL is intentionally ONLY attached to MP3/audio messages.
         return InlineKeyboardMarkup(
             [[InlineKeyboardButton("CHANNEL 📢", url=CHANNEL_URL)]]
         )
 
     def get_video_keyboard(self, url_key: str):
+        # Video gets ONLY the MUSIC button.
         return InlineKeyboardMarkup(
             [[
-                InlineKeyboardButton("MUSIC 🎵", callback_data=f"mconvert_{url_key}"),
-                InlineKeyboardButton("CHANNEL 📢", url=CHANNEL_URL),
+                InlineKeyboardButton(
+                    "MUSIC 🎵",
+                    callback_data=f"mconvert_{url_key}",
+                )
             ]]
         )
 
@@ -158,8 +155,8 @@ class ManagedBotHandler:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.effective_user or not update.message:
             return
-        user = update.effective_user
 
+        user = update.effective_user
         try:
             await db.save_bot_user(
                 self.bot_id,
@@ -171,20 +168,16 @@ class ManagedBotHandler:
             logger.exception("Could not save bot user")
 
         lang = await self.get_user_lang(user.id)
-        text = LANGUAGES[lang]["welcome"]
-
         await update.message.reply_text(
-            f"{text}\n\n🌐 **Select Language / Dooro Luuqada:**",
+            LANGUAGES[lang]["welcome"],
             reply_markup=self.get_language_keyboard(),
-            parse_mode="Markdown",
         )
 
     async def language_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message:
             await update.message.reply_text(
-                "🌐 **Select Language / Dooro Luuqada:**",
+                "🌐 Select Language / Dooro Luuqada:",
                 reply_markup=self.get_language_keyboard(),
-                parse_mode="Markdown",
             )
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -200,32 +193,40 @@ class ManagedBotHandler:
             await update.message.reply_text(texts["invalid"])
             return
 
-        status_msg = await update.message.reply_text(texts["downloading"])
+        # Do not send a "Downloading..." message. Telegram's native chat
+        # action is used instead.
+        try:
+            await context.bot.send_chat_action(
+                chat_id=update.effective_chat.id,
+                action=ChatAction.UPLOAD_VIDEO,
+            )
+        except Exception:
+            pass
+
         result = await downloader.download(url, user_id)
 
         if not result.get("success"):
-            await status_msg.edit_text(f"{texts['error']} {result.get('error', 'Unknown error')}")
+            await update.message.reply_text(
+                f"{texts['error']} {result.get('error', '')}".strip()
+            )
             return
 
         file_path = result["file_path"]
         try:
-            if result.get("media_type") == "video":
-                url_key = str(abs(hash(f"{user_id}:{url}")))[:12]
-                self.url_cache[url_key] = url
+            url_key = str(abs(hash(f"{self.bot_id}:{user_id}:{url}")))[:16]
+            self.url_cache[url_key] = url
 
-                with open(file_path, "rb") as video_file:
-                    await update.message.reply_video(
-                        video=video_file,
-                        caption=f"✅ {result.get('title', 'Downloaded Video')}",
-                        reply_markup=self.get_video_keyboard(url_key),
-                    )
-            else:
-                with open(file_path, "rb") as audio_file:
-                    await update.message.reply_audio(
-                        audio=audio_file,
-                        caption=f"🎵 {result.get('title', 'Music')}",
-                        reply_markup=self.get_channel_keyboard(),
-                    )
+            # Telegram's upload-video action is displayed while the file
+            # is being uploaded/sent. No extra status message is created.
+            with open(file_path, "rb") as video_file:
+                await context.bot.send_chat_action(
+                    chat_id=update.effective_chat.id,
+                    action=ChatAction.UPLOAD_VIDEO,
+                )
+                await update.message.reply_video(
+                    video=video_file,
+                    reply_markup=self.get_video_keyboard(url_key),
+                )
 
             try:
                 await db.add_download(
@@ -233,73 +234,70 @@ class ManagedBotHandler:
                     user_id,
                     url=url,
                     platform=result.get("platform", "general"),
-                    media_type=result.get("media_type", "video"),
+                    media_type="video",
                     status="success",
-                    file_size=0,
+                    file_size=os.path.getsize(file_path),
                 )
             except Exception:
-                logger.exception("Could not save download record")
+                logger.exception("Could not save video download record")
 
-            await status_msg.delete()
-
-        except Exception as e:
-            logger.exception("Sending downloaded media failed")
-            try:
-                await status_msg.edit_text(f"{texts['error']} {e}")
-            except Exception:
-                pass
+        except Exception as exc:
+            logger.exception("Sending video failed")
+            await update.message.reply_text(
+                f"{texts['error']} {str(exc)}"
+            )
         finally:
             downloader.cleanup(file_path)
 
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.message or not update.effective_user:
             return
+
         bot = await db.get_bot(self.bot_id)
         if not bot or int(bot.get("owner_id", 0)) != update.effective_user.id:
             return
 
         stats = await db.get_bot_stats(self.bot_id)
         await update.message.reply_text(
-            f"📊 **BOT OWNER STATS**\n\n"
-            f"👥 Total Users: `{stats['total_users']}`\n"
-            f"📥 Downloads: `{stats['total_downloads']}`\n"
-            f"🎬 Videos: `{stats['videos']}`\n"
-            f"🎵 Audio: `{stats['audio']}`",
-            parse_mode="Markdown",
+            "📊 BOT OWNER STATS\n\n"
+            f"👥 Total Users: {stats['total_users']}\n"
+            f"📥 Downloads: {stats['total_downloads']}\n"
+            f"🎬 Videos: {stats['videos']}\n"
+            f"🎵 Audio: {stats['audio']}",
         )
 
     async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.message or not update.effective_user:
             return
+
         bot = await db.get_bot(self.bot_id)
         if not bot or int(bot.get("owner_id", 0)) != update.effective_user.id:
             return
 
         if not context.args:
-            await update.message.reply_text(
-                "⚠️ Usage: `/broadcast Your message here`",
-                parse_mode="Markdown",
-            )
+            await update.message.reply_text("⚠️ Usage: /broadcast Your message here")
             return
 
         text = " ".join(context.args)
         users = await db.get_all_bot_users(self.bot_id)
-        msg = await update.message.reply_text(
+        status = await update.message.reply_text(
             f"📢 Starting broadcast to {len(users)} users..."
         )
 
         success = failed = 0
         for user in users:
             try:
-                await self.app.bot.send_message(chat_id=user["user_id"], text=text)
+                await self.app.bot.send_message(
+                    chat_id=user["user_id"],
+                    text=text,
+                )
                 success += 1
                 await asyncio.sleep(0.04)
             except Exception:
                 failed += 1
 
-        await msg.edit_text(
-            f"✅ **Broadcast Completed!**\n\n🟢 Sent: {success}\n🔴 Failed: {failed}",
-            parse_mode="Markdown",
+        await status.edit_text(
+            f"✅ Broadcast completed. Sent: {success}, Failed: {failed}"
         )
 
     async def handle_callbacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -319,69 +317,77 @@ class ManagedBotHandler:
                 query.from_user.id,
                 lang_code,
             )
-
             await query.message.edit_text(
-                f"✅ {LANGUAGES[lang_code]['welcome']}"
+                f"✅ Language changed to {LANGUAGES[lang_code]['name']}"
             )
             return
 
-        if query.data.startswith("mconvert_"):
-            url_key = query.data.split("_", 1)[1]
-            url = self.url_cache.get(url_key)
+        if not query.data.startswith("mconvert_"):
+            return
 
-            if not url:
-                await query.message.reply_text(
-                    "❌ Link-gan waa uu dhacay. Fadlan dib ugu soo dir link-ga bot-ka."
-                )
-                return
+        url_key = query.data.split("_", 1)[1]
+        url = self.url_cache.get(url_key)
+        if not url:
+            await query.message.reply_text(
+                "❌ This link has expired. Please send the link again."
+            )
+            return
 
-            status = await query.message.reply_text(
-                "🎵 Codka ayaa loo diyaarinayaa MP3... Fadlan sug."
+        # No status message. Telegram's native UPLOAD_AUDIO action shows
+        # "Sending audio…" at the top of the chat while the MP3 is sent.
+        try:
+            await context.bot.send_chat_action(
+                chat_id=query.message.chat_id,
+                action=ChatAction.UPLOAD_AUDIO,
+            )
+        except Exception:
+            pass
+
+        result = await downloader.download_audio(
+            url,
+            query.from_user.id,
+        )
+
+        if not result.get("success"):
+            await query.message.reply_text(
+                f"❌ {result.get('error', 'MP3 conversion failed')}"
+            )
+            return
+
+        file_path = result["file_path"]
+        try:
+            await context.bot.send_chat_action(
+                chat_id=query.message.chat_id,
+                action=ChatAction.UPLOAD_AUDIO,
             )
 
-            result = await downloader.download_audio(
-                url,
-                query.from_user.id,
-            )
-
-            if not result.get("success"):
-                await status.edit_text(
-                    f"❌ {result.get('error', 'MP3 conversion failed')}"
+            with open(file_path, "rb") as audio_file:
+                # No caption and no Markdown parsing. Only CHANNEL button.
+                await query.message.reply_audio(
+                    audio=audio_file,
+                    reply_markup=self.get_channel_keyboard(),
                 )
-                return
 
-            file_path = result["file_path"]
             try:
-                with open(file_path, "rb") as audio_file:
-                    await query.message.reply_audio(
-                        audio=audio_file,
-                        caption=f"🎵 **{result.get('title', 'Music')}**\n\nConverted to MP3 successfully!",
-                        reply_markup=self.get_channel_keyboard(),
-                        parse_mode="Markdown",
-                    )
+                await db.add_download(
+                    self.bot_id,
+                    query.from_user.id,
+                    url=url,
+                    platform=result.get("platform", "general"),
+                    media_type="audio",
+                    status="success",
+                    file_size=os.path.getsize(file_path),
+                )
+            except Exception:
+                logger.exception("Could not save audio download record")
 
-                try:
-                    await db.add_download(
-                        self.bot_id,
-                        query.from_user.id,
-                        url=url,
-                        platform=result.get("platform", "general"),
-                        media_type="audio",
-                        status="success",
-                        file_size=0,
-                    )
-                except Exception:
-                    logger.exception("Could not save audio download record")
-
-                await status.delete()
-            except Exception as e:
-                logger.exception("Sending MP3 failed")
-                try:
-                    await status.edit_text(f"❌ {e}")
-                except Exception:
-                    pass
-            finally:
-                downloader.cleanup(file_path)
+        except Exception as exc:
+            logger.exception("Sending MP3 failed")
+            await query.message.reply_text(
+                f"❌ {str(exc)}"
+            )
+        finally:
+            downloader.cleanup(file_path)
 
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         logger.error(
