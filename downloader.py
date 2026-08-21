@@ -14,6 +14,7 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=10)
+premium_executor = ThreadPoolExecutor(max_workers=20)
 
 
 class MediaDownloader:
@@ -151,7 +152,7 @@ class MediaDownloader:
             variants.insert(0, candidate)
         return variants
 
-    async def download(self, url: str, user_id: int) -> dict:
+    async def download(self, url: str, user_id: int, premium: bool = False) -> dict:
         async with self.lock:
             if url in self.processing_urls:
                 return {"success": False, "error": "This link is already being downloaded."}
@@ -159,18 +160,19 @@ class MediaDownloader:
 
         try:
             loop = asyncio.get_running_loop()
-            real_url = await loop.run_in_executor(executor, lambda: self.expand_url(url))
+            pool = premium_executor if premium else executor
+            real_url = await loop.run_in_executor(pool, lambda: self.expand_url(url))
             platform = self.extract_platform(real_url)
             out_template = str(self.download_dir / f"{user_id}_%(id)s.%(ext)s")
             base = self._base_opts(out_template)
             base.update({
-                "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
+                "format": "bv*+ba/best",
                 "merge_output_format": "mp4",
             })
             if platform == "youtube":
                 base["match_filter"] = self._youtube_duration_filter
 
-            result = await self._try_download(loop, base, real_url, platform)
+            result = await self._try_download(loop, base, real_url, platform, premium=premium)
             return {
                 "success": True,
                 "file_path": result["file_path"],
@@ -185,7 +187,7 @@ class MediaDownloader:
             async with self.lock:
                 self.processing_urls.discard(url)
 
-    async def download_audio(self, url: str, user_id: int) -> dict:
+    async def download_audio(self, url: str, user_id: int, premium: bool = False) -> dict:
         async with self.lock:
             if url in self.processing_urls:
                 return {"success": False, "error": "Audio conversion is already running."}
@@ -193,7 +195,8 @@ class MediaDownloader:
 
         try:
             loop = asyncio.get_running_loop()
-            real_url = await loop.run_in_executor(executor, lambda: self.expand_url(url))
+            pool = premium_executor if premium else executor
+            real_url = await loop.run_in_executor(pool, lambda: self.expand_url(url))
             platform = self.extract_platform(real_url)
             out_template = str(self.download_dir / f"audio_{user_id}_%(id)s.%(ext)s")
             base = self._base_opts(out_template)
@@ -208,7 +211,7 @@ class MediaDownloader:
             if platform == "youtube":
                 base["match_filter"] = self._youtube_duration_filter
 
-            result = await self._try_download(loop, base, real_url, platform)
+            result = await self._try_download(loop, base, real_url, platform, premium=premium)
             return {
                 "success": True,
                 "file_path": result["file_path"],
@@ -223,12 +226,13 @@ class MediaDownloader:
             async with self.lock:
                 self.processing_urls.discard(url)
 
-    async def _try_download(self, loop, base_opts, url, platform):
+    async def _try_download(self, loop, base_opts, url, platform, premium=False):
         errors = []
+        pool = premium_executor if premium else executor
         for opts in self._variants(base_opts, platform):
             try:
                 return await loop.run_in_executor(
-                    executor,
+                    pool,
                     lambda o=opts: self._exec_dlp(o, url),
                 )
             except Exception as exc:
