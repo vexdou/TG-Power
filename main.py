@@ -7,6 +7,7 @@ from aiohttp import web
 from database import db
 from bot_manager import bot_manager
 from main_bot import main_bot
+from config import Config
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -22,6 +23,7 @@ async def handle_ping(request):
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", handle_ping)
+    app.router.add_get("/health", handle_ping)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -33,6 +35,15 @@ async def start_web_server():
     logger.info("🌐 Web Server started on port %s", port)
 
 
+async def load_persisted_settings():
+    max_video = await db.get_system_setting("max_video_seconds", None)
+    max_file = await db.get_system_setting("max_file_mb", None)
+    if isinstance(max_video, int) and max_video > 0:
+        Config.MAX_VIDEO_DURATION_SECONDS = max_video
+    if isinstance(max_file, int) and max_file > 0:
+        Config.MAX_FILE_SIZE_MB = max_file
+
+
 async def main():
     logger.info("🚀 Starting TG-Power Platform...")
 
@@ -40,6 +51,7 @@ async def main():
 
     logger.info("Initializing Database...")
     await db.connect()
+    await load_persisted_settings()
 
     logger.info("Starting Main SaaS Controller Bot...")
     await main_bot.start_controller()
