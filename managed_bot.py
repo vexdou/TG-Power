@@ -17,6 +17,7 @@ from telegram.error import TelegramError, Forbidden
 
 from database import db
 from downloader import downloader
+from force_join import force_join_checker
 
 logger = logging.getLogger(__name__)
 
@@ -119,18 +120,12 @@ class ManagedBotHandler:
         return None
 
     async def _is_joined_all(self, user_id: int, channels: list[str]) -> bool:
-        for channel in channels:
-            try:
-                member = await self.app.bot.get_chat_member(channel, user_id)
-                status = getattr(member, "status", "")
-                if status in {"left", "kicked"}:
-                    return False
-                if status == "restricted" and not getattr(member, "is_member", False):
-                    return False
-            except Exception as exc:
-                logger.warning("Force-join check failed for %s on %s: %s", user_id, channel, exc)
-                return False
-        return True
+        # IMPORTANT: use the MAIN controller bot for every membership check.
+        # Managed downloader bots do NOT need to be channel admins.
+        ok, failed_channel = await force_join_checker.check_user(user_id, channels)
+        if not ok:
+            logger.info("Central Force-Join denied user=%s channel=%s", user_id, failed_channel)
+        return ok
 
     def _force_join_keyboard(self, channels: list[str]):
         rows = []
@@ -152,7 +147,7 @@ class ManagedBotHandler:
         target = update.message if update.message else None
         if target:
             await target.reply_text(
-                "⚠️ You must join our Channel to Download Video.\n\n"
+                "⚠️ You must join our Channel to Download Video ⚠️\n\n"
                 "Join all required channels below, then press I Joined — Check.",
                 reply_markup=self._force_join_keyboard(channels),
             )
