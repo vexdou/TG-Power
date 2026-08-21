@@ -92,6 +92,19 @@ class MediaDownloader:
             opts = dict(opts)
             opts["cookiefile"] = cookie_file
 
+        # Optional Render secret: base64-encoded Netscape cookies.txt.
+        # This avoids requiring a browser to exist inside the Render service.
+        cookie_b64 = os.getenv("YOUTUBE_COOKIES_BASE64", "").strip()
+        if cookie_b64 and not cookie_file:
+            import base64
+            try:
+                cookie_path = self.download_dir / ".youtube_cookies.txt"
+                cookie_path.write_bytes(base64.b64decode(cookie_b64))
+                opts = dict(opts)
+                opts["cookiefile"] = str(cookie_path)
+            except Exception:
+                logger.warning("Invalid YOUTUBE_COOKIES_BASE64")
+
         # Optional PO token supplied through Render environment variables.
         po_token = os.getenv("YOUTUBE_PO_TOKEN", "").strip()
         if po_token:
@@ -104,8 +117,10 @@ class MediaDownloader:
             opts["extractor_args"] = args
             variants.append(opts)
 
-        # tv is currently the most useful no-PO-token fallback.
-        for clients in (["tv"], ["web_embedded"], ["android_vr"]):
+        # Current yt-dlp guidance lists tv, web_embedded and android_vr as
+        # clients that can work without a manually supplied PO token.
+        # Use several fallbacks because YouTube may block a client/IP pair.
+        for clients in (["tv"], ["web_embedded"], ["android_vr"], ["tv_simply"]):
             candidate = dict(opts)
             candidate["extractor_args"] = {
                 "youtube": {"player_client": clients}
@@ -272,6 +287,12 @@ class MediaDownloader:
 
         # Keep the user-facing error short and never send raw Markdown.
         last = errors[-1] if errors else "yt-dlp could not download the media."
+        if platform == "youtube" and "Sign in to confirm you’re not a bot" in last:
+            raise RuntimeError(
+                "YouTube is blocking this Render server. Add a valid YouTube cookies.txt "
+                "file/secret or a current PO token to the Render environment. "
+                "Other supported platforms are not affected."
+            )
         raise RuntimeError(self._clean_error(last))
 
     @staticmethod
@@ -328,15 +349,18 @@ class MediaDownloader:
                     "The media was downloaded but the output file was not found."
                 )
 
+            lower_name = filename.lower()
+            if lower_name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+                media_type = "photo"
+            elif info.get("vcodec") == "none" or lower_name.endswith(".mp3"):
+                media_type = "audio"
+            else:
+                media_type = "video"
+
             return {
                 "file_path": filename,
                 "title": info.get("title", "Media"),
-                "media_type": (
-                    "audio"
-                    if info.get("vcodec") == "none"
-                    or filename.lower().endswith(".mp3")
-                    else "video"
-                ),
+                "media_type": media_type,
             }
 
     @staticmethod
