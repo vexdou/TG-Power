@@ -4,7 +4,6 @@ import logging
 import os
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -157,20 +156,37 @@ class ManagedBotHandler:
             return
 
         user = update.effective_user
+
+        # Keep the user's previously selected language. The old code called
+        # save_bot_user() with its default language on every /start, which
+        # could reset a user's language back to English.
+        existing = None
+        try:
+            existing = await db.get_bot_user(self.bot_id, user.id)
+        except Exception:
+            logger.exception("Could not read bot user")
+
+        first_start = not existing
+        lang = (existing or {}).get("language") if existing else "en"
+        if lang not in LANGUAGES:
+            lang = "en"
+
         try:
             await db.save_bot_user(
                 self.bot_id,
                 user.id,
                 user.username or "",
                 user.full_name or "",
+                language=lang,
             )
         except Exception:
             logger.exception("Could not save bot user")
 
-        lang = await self.get_user_lang(user.id)
+        # Ask for language only on the first /start. Afterwards /start keeps
+        # the saved language and never shows the selector again.
         await update.message.reply_text(
             LANGUAGES[lang]["welcome"],
-            reply_markup=self.get_language_keyboard(),
+            reply_markup=(self.get_language_keyboard() if first_start else None),
         )
 
     async def language_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -198,7 +214,7 @@ class ManagedBotHandler:
         try:
             await context.bot.send_chat_action(
                 chat_id=update.effective_chat.id,
-                action=ChatAction.UPLOAD_VIDEO,
+                action="upload_video",
             )
         except Exception:
             pass
@@ -216,17 +232,29 @@ class ManagedBotHandler:
             url_key = str(abs(hash(f"{self.bot_id}:{user_id}:{url}")))[:16]
             self.url_cache[url_key] = url
 
-            # Telegram's upload-video action is displayed while the file
-            # is being uploaded/sent. No extra status message is created.
-            with open(file_path, "rb") as video_file:
+            media_type = result.get("media_type", "video")
+
+            # Telegram's native action is shown while the media is uploaded;
+            # no separate "Downloading..." message is created.
+            if media_type == "photo":
                 await context.bot.send_chat_action(
                     chat_id=update.effective_chat.id,
-                    action=ChatAction.UPLOAD_VIDEO,
+                    action="upload_photo",
                 )
-                await update.message.reply_video(
-                    video=video_file,
-                    reply_markup=self.get_video_keyboard(url_key),
+                with open(file_path, "rb") as photo_file:
+                    await update.message.reply_photo(
+                        photo=photo_file,
+                    )
+            else:
+                await context.bot.send_chat_action(
+                    chat_id=update.effective_chat.id,
+                    action="upload_video",
                 )
+                with open(file_path, "rb") as video_file:
+                    await update.message.reply_video(
+                        video=video_file,
+                        reply_markup=self.get_video_keyboard(url_key),
+                    )
 
             try:
                 await db.add_download(
@@ -234,7 +262,7 @@ class ManagedBotHandler:
                     user_id,
                     url=url,
                     platform=result.get("platform", "general"),
-                    media_type="video",
+                    media_type=media_type,
                     status="success",
                     file_size=os.path.getsize(file_path),
                 )
@@ -338,7 +366,7 @@ class ManagedBotHandler:
         try:
             await context.bot.send_chat_action(
                 chat_id=query.message.chat_id,
-                action=ChatAction.UPLOAD_AUDIO,
+                action="upload_audio",
             )
         except Exception:
             pass
@@ -358,7 +386,7 @@ class ManagedBotHandler:
         try:
             await context.bot.send_chat_action(
                 chat_id=query.message.chat_id,
-                action=ChatAction.UPLOAD_AUDIO,
+                action="upload_audio",
             )
 
             with open(file_path, "rb") as audio_file:
