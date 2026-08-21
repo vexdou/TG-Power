@@ -10,6 +10,60 @@ from bot_manager import bot_manager
 
 logger = logging.getLogger(__name__)
 
+PREMIUM_I18N = {
+    "en": {
+        "no_bots": "⭐ Premium\n\nCreate a downloader bot first, then you can activate Premium with Telegram Stars.",
+        "choose_bot": "⭐ PREMIUM\n\nChoose the bot you want to upgrade.\n\nPremium removes system ads, enables priority download processing and unlocks premium customization.",
+        "plans": "⭐ PREMIUM PLANS\n\nPremium benefits:\n• 🚫 No system ads\n• ⚡ Priority download processing\n• 🎨 Premium caption and button controls\n• 🛠 Owner/admin customization\n\nChoose a plan:",
+        "not_owner": "⛔ This bot does not belong to you.",
+        "payment_invalid": "Invalid Premium payment.",
+        "payment_failed": "Premium payment could not be verified.",
+        "activated": "🎉 PREMIUM ACTIVATED!\n\n🤖 Bot: @{name}\n⭐ Paid: {stars} Telegram Stars\n📅 Plan: {plan}\n⏳ Expires: {until}\n\n🚫 System ads are disabled for this bot.\n⚡ Premium priority processing is enabled.",
+        "activation_error": "❌ Payment received, but Premium activation needs administrator attention.",
+    },
+    "so": {
+        "no_bots": "⭐ Premium\n\nMarka hore samee downloader bot, kadib Premium waxaad ku furan kartaa Telegram Stars.",
+        "choose_bot": "⭐ PREMIUM\n\nDooro bot-ka aad rabto inaad Premium ka dhigto.\n\nPremium wuxuu ka saaraa ads-ka system-ka, wuxuu siinayaa download priority sare, wuxuuna furayaa habaynta Premium.",
+        "plans": "⭐ QORSHEYAASHA PREMIUM\n\nFaa'iidooyinka Premium:\n• 🚫 Ads system-ka ma jiro\n• ⚡ Download xawaare/priority sare\n• 🎨 Caption iyo buttons gaar ah\n• 🛠 Maamul iyo habayn Premium\n\nDooro qorshaha:",
+        "not_owner": "⛔ Bot-kan adiga ma lihid.",
+        "payment_invalid": "Lacag-bixinta Premium ma saxna.",
+        "payment_failed": "Lacag-bixinta Premium lama xaqiijin karin.",
+        "activated": "🎉 PREMIUM WAA FURMAY!\n\n🤖 Bot: @{name}\n⭐ La bixiyey: {stars} Telegram Stars\n📅 Qorshe: {plan}\n⏳ Wuxuu dhacayaa: {until}\n\n🚫 Ads-ka system-ka waa laga saaray bot-kan.\n⚡ Download priority sare waa la furay.",
+        "activation_error": "❌ Lacagta waa la helay, laakiin Premium wuxuu u baahan yahay in admin uu hubiyo.",
+    },
+    "ar": {
+        "no_bots": "⭐ بريميوم\n\nأنشئ بوت تحميل أولاً، ثم يمكنك تفعيل Premium باستخدام Telegram Stars.",
+        "choose_bot": "⭐ PREMIUM\n\nاختر البوت الذي تريد ترقيته.\n\nPremium يزيل إعلانات النظام ويعطي أولوية للتحميل ويفتح التخصيص.",
+        "plans": "⭐ خطط PREMIUM\n\nمزايا Premium:\n• 🚫 بدون إعلانات النظام\n• ⚡ أولوية تحميل أعلى\n• 🎨 تخصيص النص والأزرار\n• 🛠 تخصيص من المالك/المسؤول\n\nاختر الخطة:",
+        "not_owner": "⛔ هذا البوت ليس ملكك.",
+        "payment_invalid": "دفعة Premium غير صالحة.",
+        "payment_failed": "تعذر التحقق من دفعة Premium.",
+        "activated": "🎉 تم تفعيل PREMIUM!\n\n🤖 البوت: @{name}\n⭐ المدفوع: {stars} Telegram Stars\n📅 الخطة: {plan}\n⏳ الانتهاء: {until}\n\n🚫 تم تعطيل إعلانات النظام لهذا البوت.\n⚡ تم تفعيل أولوية التحميل.",
+        "activation_error": "❌ تم استلام الدفعة، لكن تفعيل Premium يحتاج إلى مراجعة المسؤول.",
+    },
+    "es": {
+        "no_bots": "⭐ Premium\n\nPrimero crea un bot descargador y después activa Premium con Telegram Stars.",
+        "choose_bot": "⭐ PREMIUM\n\nElige el bot que quieres actualizar.\n\nPremium elimina los anuncios del sistema, activa prioridad de descarga y desbloquea la personalización.",
+        "plans": "⭐ PLANES PREMIUM\n\nBeneficios Premium:\n• 🚫 Sin anuncios del sistema\n• ⚡ Prioridad de descarga\n• 🎨 Caption y botones personalizados\n• 🛠 Personalización del propietario/admin\n\nElige un plan:",
+        "not_owner": "⛔ Este bot no te pertenece.",
+        "payment_invalid": "Pago Premium no válido.",
+        "payment_failed": "No se pudo verificar el pago Premium.",
+        "activated": "🎉 ¡PREMIUM ACTIVADO!\n\n🤖 Bot: @{name}\n⭐ Pagado: {stars} Telegram Stars\n📅 Plan: {plan}\n⏳ Expira: {until}\n\n🚫 Los anuncios del sistema están desactivados.\n⚡ Prioridad de descarga activada.",
+        "activation_error": "❌ El pago fue recibido, pero la activación de Premium necesita revisión del administrador.",
+    },
+}
+
+def ptext(uid, key, **kwargs):
+    import asyncio
+    # premium callbacks already have async context; this helper reads the stored language synchronously only for formatting fallback.
+    return PREMIUM_I18N["en"][key].format(**kwargs)
+
+async def localized(uid, key, **kwargs):
+    lang = await db.get_main_user_language(uid)
+    if lang not in PREMIUM_I18N: lang = "en"
+    return PREMIUM_I18N[lang][key].format(**kwargs)
+
+
 PLANS = {
     "1m": ("1 Month", 30),
     "3m": ("3 Months", 90),
@@ -40,7 +94,7 @@ async def premium_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     bots = await db.get_user_bots(update.effective_user.id)
     if not bots:
-        await update.message.reply_text("⭐ Premium\n\nCreate a downloader bot first, then you can activate Premium with Telegram Stars.")
+        await update.message.reply_text(await localized(update.effective_user.id, "no_bots"))
         return
     rows = []
     for bot in bots:
@@ -48,7 +102,7 @@ async def premium_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = bot.get("username") or str(bid)
         rows.append([InlineKeyboardButton(f"⭐ @{name}", callback_data=f"prem:bot:{bid}")])
     await update.message.reply_text(
-        "⭐ PREMIUM\n\nChoose the bot you want to upgrade.\n\nPremium removes system ads, enables the premium priority queue and unlocks premium customization.",
+        await localized(update.effective_user.id, "choose_bot"),
         reply_markup=InlineKeyboardMarkup(rows),
     )
 
@@ -71,18 +125,12 @@ async def premium_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return True
     bot = await db.get_bot(bot_id)
     if not bot or int(bot.get("owner_id", 0)) != uid:
-        await q.answer("⛔ This bot does not belong to you.", show_alert=True)
+        await q.answer(await localized(uid, "not_owner"), show_alert=True)
         return True
     if action == "bot":
         prices = await db.get_premium_prices()
         await q.edit_message_text(
-            "⭐ PREMIUM PLANS\n\n"
-            "Premium benefits:\n"
-            "• 🚫 No system ads\n"
-            "• ⚡ Priority download processing\n"
-            "• 🎨 Premium caption and button controls\n"
-            "• 🛠 Owner/admin customization\n\n"
-            "Choose a plan:",
+            await localized(uid, "plans"),
             reply_markup=owner_plans(bot_id, prices),
         )
         return True
@@ -109,7 +157,7 @@ async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.pre_checkout_query
     payload = q.invoice_payload or ""
     if not payload.startswith("tgpower-premium:"):
-        await q.answer(ok=False, error_message="Invalid Premium payment.")
+        await q.answer(ok=False, error_message=await localized(q.from_user.id, "payment_invalid"))
         return
     try:
         _, bot_id, plan, owner_id = payload.split(":")
@@ -117,9 +165,9 @@ async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prices = await db.get_premium_prices()
         valid = bot and int(bot.get("owner_id", 0)) == int(q.from_user.id) == int(owner_id) and plan in PLANS
         valid = valid and int(q.total_amount) == int(prices[plan])
-        await q.answer(ok=bool(valid), error_message=None if valid else "Premium payment could not be verified.")
+        await q.answer(ok=bool(valid), error_message=None if valid else await localized(q.from_user.id, "payment_failed"))
     except Exception:
-        await q.answer(ok=False, error_message="Invalid Premium payment.")
+        await q.answer(ok=False, error_message=await localized(q.from_user.id, "payment_invalid"))
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user:
@@ -149,16 +197,15 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
             except Exception:
                 logger.exception("Could not restart premium bot %s", bot_id)
         await update.message.reply_text(
-            "🎉 PREMIUM ACTIVATED!\n\n"
-            f"🤖 Bot: @{(bot or {}).get('username') or bot_id}\n"
-            f"⭐ Paid: {stars} Telegram Stars\n"
-            f"📅 Plan: {PLANS[plan][0]}\n"
-            f"⏳ Expires: {until.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
-            "🚫 System ads are disabled for this bot.\n⚡ Premium priority processing is enabled.",
+            await localized(
+                update.effective_user.id, "activated",
+                name=(bot or {}).get("username") or bot_id, stars=stars,
+                plan=PLANS[plan][0], until=until.strftime("%Y-%m-%d %H:%M UTC")
+            )
         )
     except Exception as exc:
         logger.exception("Premium payment handling failed: %s", exc)
-        await update.message.reply_text("❌ Payment received, but Premium activation needs administrator attention.")
+        await update.message.reply_text(await localized(update.effective_user.id, "activation_error"))
 
 async def admin_premium_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not _is_admin(update.effective_user.id):

@@ -61,3 +61,11 @@ Telegram Stars Premium:
 - Up to 10 custom premium URL buttons per bot.
 - Admin commands: /setpremium PLAN STARS, /premiumgrant BOT_ID DAYS, /premiumcaption BOT_ID TEXT, /premiumbutton BOT_ID LABEL|URL, /premiumad BOT_ID TEXT.
 - Premium management is also exposed through the main admin panel's Premium Center buttons.
+
+LANGUAGE UPDATE
+- Main bot language is stored per Telegram user in MongoDB.
+- Supported main-bot languages: English, Somali, Arabic, Spanish.
+- The selected language persists across /start and future sessions.
+- Main user keyboard and user-facing welcome/help/id/authorization/bot-creation messages are localized.
+- Premium purchase messages are localized too.
+- Admin panel remains in English for stable administration controls.

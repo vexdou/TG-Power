@@ -39,6 +39,105 @@ LANGUAGES = {
     "es": "Español 🇪🇸",
 }
 
+# Main-bot user interface translations. Admin panel intentionally stays in English
+# so administrators have stable button names regardless of their personal language.
+USER_I18N = {
+    "en": {
+        "create": "➕ Create New Bot", "my_bots": "🤖 My Bots", "premium": "⭐ Premium", "language": "🌐 Language", "help": "ℹ️ Help", "admin": "👑 Admin Panel",
+        "choose_language": "🌐 Choose your language:",
+        "language_saved": "✅ Language saved: English 🇬🇧",
+        "welcome_title": "🤖 TG-Power — Downloader Bot Builder",
+        "welcome": "This main bot creates ready-to-use video downloader bots.",
+        "platforms": "Your created bots can download supported videos from:\n• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 Every downloaded video has a MUSIC button to convert it to MP3.\n📢 MP3 files receive a CHANNEL button.",
+        "instructions": "➕ Create New Bot — create your own downloader bot\n🤖 My Bots — manage your bots\n🌐 Language — choose your language",
+        "admin_hint": "If you are an administrator, use the 👑 Admin Panel button below.",
+        "help_text": "ℹ️ HELP\n\n➕ Create New Bot — create a downloader bot.\n🤖 My Bots — see your bots.\nSend a video link to a created bot to download it.\nThe downloaded video has a MUSIC button.\nMUSIC creates MP3 and adds CHANNEL.\nAdmins can control the entire platform from 👑 Admin Panel.",
+        "id": "🆔 Your Telegram ID:\n\n{uid}\n\nSet this number in Render as OWNER_ID.",
+        "unauthorized": "⛔ You are not authorized.\n\nYour ID: {uid}\nAdd this ID to Render OWNER_ID or ADMIN_IDS.",
+        "bot_online": "✅ Bot is online!\n\n@{username}\nhttps://t.me/{username}\n\nSend /start to your new bot. It will remember your language after you choose it.",
+        "bot_saved_failed": "⚠️ Bot was saved, but could not be started. Check Render logs.",
+        "token_missing": "❌ Managed bot token could not be retrieved.",
+        "creation_disabled": "⛔ Bot creation is currently disabled.",
+    },
+    "so": {
+        "create": "➕ Samee Bot Cusub", "my_bots": "🤖 Bots-kayga", "premium": "⭐ Premium", "language": "🌐 Luuqad", "help": "ℹ️ Caawimo", "admin": "👑 Admin Panel",
+        "choose_language": "🌐 Dooro luuqadda:",
+        "language_saved": "✅ Luuqadda waa la keydiyey: Soomaali 🇸🇴",
+        "welcome_title": "🤖 TG-Power — Dhisaha Downloader Bot",
+        "welcome": "Bot-kan weyn wuxuu kuu sameeyaa bots diyaar u ah dajinta videos-ka.",
+        "platforms": "Bots-ka aad sameysato waxay ka dajin karaan videos:\n• TikTok\n• Facebook\n• YouTube (ilaa 10 daqiiqo)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 Video kasta oo la dajiyo wuxuu leeyahay MUSIC si loogu beddelo MP3.\n📢 MP3-yaduna waxay leeyihiin CHANNEL.",
+        "instructions": "➕ Samee Bot Cusub — samee downloader bot-kaaga\n🤖 Bots-kayga — maamul bots-kaaga\n🌐 Luuqad — beddel luuqadda bot-ka",
+        "admin_hint": "Haddii aad tahay admin, isticmaal 👑 Admin Panel.",
+        "help_text": "ℹ️ CAWIMO\n\n➕ Samee Bot Cusub — samee downloader bot.\n🤖 Bots-kayga — eeg oo maamul bots-kaaga.\nLink video u dir bot-ka aad sameysatay si loo dajiyo.\nVideo-ga wuxuu leeyahay MUSIC.\nMUSIC wuxuu sameeyaa MP3, MP3-na wuxuu leeyahay CHANNEL.\nAdmin-ku wuxuu dhammaan system-ka ka maamuli karaa 👑 Admin Panel.",
+        "id": "🆔 Telegram ID-gaaga:\n\n{uid}\n\nNumber-kan ku geli Render OWNER_ID.",
+        "unauthorized": "⛔ Looma oggola.\n\nID-gaaga: {uid}\nKu dar Render OWNER_ID ama ADMIN_IDS.",
+        "bot_online": "✅ Bot-ku wuu shaqeynayaa!\n\n@{username}\nhttps://t.me/{username}\n\nU dir /start bot-kaaga cusub. Luuqadda aad doorato wuu xasuusanayaa.",
+        "bot_saved_failed": "⚠️ Bot-ka waa la keydiyey laakiin lama bilaabi karin. Fiiri Render logs.",
+        "token_missing": "❌ Token-ka bot-ka lama heli karo.",
+        "creation_disabled": "⛔ Sameynta bots-ka hadda waa la xiray.",
+    },
+    "ar": {
+        "create": "➕ إنشاء بوت جديد", "my_bots": "🤖 بوتاتي", "premium": "⭐ بريميوم", "language": "🌐 اللغة", "help": "ℹ️ المساعدة", "admin": "👑 لوحة الإدارة",
+        "choose_language": "🌐 اختر لغتك:",
+        "language_saved": "✅ تم حفظ اللغة: العربية 🇸🇦",
+        "welcome_title": "🤖 TG-Power — منشئ بوتات التحميل",
+        "welcome": "هذا البوت الرئيسي ينشئ لك بوتات جاهزة لتحميل الفيديوهات.",
+        "platforms": "يمكن لبوتاتك تحميل الفيديو من:\n• TikTok\n• Facebook\n• YouTube (حتى 10 دقائق)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 كل فيديو يتم تحميله يحتوي على زر MUSIC لتحويله إلى MP3.\n📢 ملفات MP3 تحتوي على زر CHANNEL.",
+        "instructions": "➕ إنشاء بوت جديد — أنشئ بوت التحميل الخاص بك\n🤖 بوتاتي — إدارة بوتاتك\n🌐 اللغة — تغيير لغة البوت",
+        "admin_hint": "إذا كنت مسؤولاً استخدم زر 👑 لوحة الإدارة.",
+        "help_text": "ℹ️ المساعدة\n\n➕ إنشاء بوت جديد — إنشاء بوت لتحميل الفيديو.\n🤖 بوتاتي — عرض وإدارة بوتاتك.\nأرسل رابط فيديو إلى البوت ليتم تحميله.\nالفيديو يحتوي على زر MUSIC.\nMUSIC يحول الفيديو إلى MP3 وMP3 يحتوي على CHANNEL.\nيمكن للمسؤول إدارة المنصة من 👑 لوحة الإدارة.",
+        "id": "🆔 معرف Telegram الخاص بك:\n\n{uid}\n\nضع هذا الرقم في Render باسم OWNER_ID.",
+        "unauthorized": "⛔ غير مصرح لك.\n\nمعرفك: {uid}\nأضف المعرف إلى OWNER_ID أو ADMIN_IDS في Render.",
+        "bot_online": "✅ البوت يعمل الآن!\n\n@{username}\nhttps://t.me/{username}\n\nأرسل /start إلى البوت الجديد. سيحفظ اللغة التي تختارها.",
+        "bot_saved_failed": "⚠️ تم حفظ البوت ولكن تعذر تشغيله. راجع سجلات Render.",
+        "token_missing": "❌ تعذر الحصول على رمز البوت.",
+        "creation_disabled": "⛔ إنشاء البوتات متوقف حالياً.",
+    },
+    "es": {
+        "create": "➕ Crear bot nuevo", "my_bots": "🤖 Mis bots", "premium": "⭐ Premium", "language": "🌐 Idioma", "help": "ℹ️ Ayuda", "admin": "👑 Panel de administración",
+        "choose_language": "🌐 Elige tu idioma:",
+        "language_saved": "✅ Idioma guardado: Español 🇪🇸",
+        "welcome_title": "🤖 TG-Power — Creador de bots descargadores",
+        "welcome": "Este bot principal crea bots listos para descargar vídeos.",
+        "platforms": "Tus bots pueden descargar vídeos de:\n• TikTok\n• Facebook\n• YouTube (hasta 10 minutos)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 Cada vídeo descargado tiene un botón MUSIC para convertirlo a MP3.\n📢 Los MP3 reciben un botón CHANNEL.",
+        "instructions": "➕ Crear bot nuevo — crea tu bot descargador\n🤖 Mis bots — administra tus bots\n🌐 Idioma — cambia el idioma del bot",
+        "admin_hint": "Si eres administrador, usa el botón 👑 Panel de administración.",
+        "help_text": "ℹ️ AYUDA\n\n➕ Crear bot nuevo — crea un bot descargador.\n🤖 Mis bots — mira tus bots.\nEnvía un enlace de vídeo a un bot creado para descargarlo.\nEl vídeo tiene un botón MUSIC.\nMUSIC crea MP3 y añade CHANNEL.\nLos administradores controlan toda la plataforma desde 👑 Panel de administración.",
+        "id": "🆔 Tu ID de Telegram:\n\n{uid}\n\nPon este número en Render como OWNER_ID.",
+        "unauthorized": "⛔ No tienes autorización.\n\nTu ID: {uid}\nAñádelo a OWNER_ID o ADMIN_IDS en Render.",
+        "bot_online": "✅ ¡El bot está activo!\n\n@{username}\nhttps://t.me/{username}\n\nEnvía /start a tu nuevo bot. Recordará el idioma que elijas.",
+        "bot_saved_failed": "⚠️ El bot se guardó, pero no pudo iniciarse. Revisa los logs de Render.",
+        "token_missing": "❌ No se pudo obtener el token del bot.",
+        "creation_disabled": "⛔ La creación de bots está desactivada actualmente.",
+    },
+}
+
+def user_lang(uid: int) -> str:
+    # Callers that already have a stored language should pass it through.
+    return "en"
+
+def tr(lang: str, key: str, **kwargs) -> str:
+    lang = lang if lang in USER_I18N else "en"
+    return USER_I18N[lang][key].format(**kwargs)
+
+
+def localized_button(lang: str, key: str) -> str:
+    lang = lang if lang in USER_I18N else "en"
+    return USER_I18N[lang][key]
+
+
+def canonical_user_button(text: str) -> str:
+    for key in ("create", "my_bots", "premium", "language", "help", "admin"):
+        for lang in USER_I18N:
+            if text == USER_I18N[lang][key]:
+                return key
+    return text
+
+
 ADMIN_BUTTONS = [
     "📊 Dashboard", "🤖 All Bots", "🔎 Search Bot", "👥 Users",
     "👥 Bot Users", "👑 Bot Owners", "📥 Downloads", "📈 Download Stats",
@@ -79,11 +178,11 @@ def is_admin(user_id: int) -> bool:
     return int(user_id) in admin_ids()
 
 
-def main_keyboard(user_id=None):
+def main_keyboard(user_id=None, lang="en"):
     request_id = int(time.time() * 1000) % 2147483647
     try:
         create_button = KeyboardButton(
-            text="➕ Create New Bot",
+            text=localized_button(lang, "create"),
             request_managed_bot=KeyboardButtonRequestManagedBot(
                 request_id=request_id,
                 suggested_name="My Downloader Bot",
@@ -95,11 +194,11 @@ def main_keyboard(user_id=None):
 
     rows = [
         [create_button],
-        [KeyboardButton("🤖 My Bots"), KeyboardButton("⭐ Premium")],
-        [KeyboardButton("🌐 Language"), KeyboardButton("ℹ️ Help")],
+        [KeyboardButton(localized_button(lang, "my_bots")), KeyboardButton(localized_button(lang, "premium"))],
+        [KeyboardButton(localized_button(lang, "language")), KeyboardButton(localized_button(lang, "help"))],
     ]
     if user_id is not None and is_admin(user_id):
-        rows.append([KeyboardButton("👑 Admin Panel")])
+        rows.append([KeyboardButton(localized_button(lang, "admin"))])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -200,15 +299,14 @@ class MainSaaSBot:
 
     async def id_command(self, update, context):
         if update.effective_user and update.message:
-            await update.message.reply_text(
-                f"🆔 Your Telegram ID:\n\n{update.effective_user.id}\n\n"
-                "Set this number in Render as OWNER_ID."
-            )
+            lang = await db.get_main_user_language(update.effective_user.id)
+            await update.message.reply_text(tr(lang, "id", uid=update.effective_user.id))
 
     async def language_command(self, update, context):
         if update.message:
+            lang = await db.get_main_user_language(update.effective_user.id)
             await update.message.reply_text(
-                "🌐 Choose your language / Dooro luuqadda:",
+                tr(lang, "choose_language"),
                 reply_markup=language_keyboard(),
             )
 
@@ -217,31 +315,24 @@ class MainSaaSBot:
             return
         user = update.effective_user
         await db.save_main_user(user.id, user.username or "", user.full_name or "")
+        lang = await db.get_main_user_language(user.id)
         await update.message.reply_text(
-            "🤖 TG-Power — Downloader Bot Builder\n\n"
-            f"👋 Welcome, {user.first_name or 'User'}!\n\n"
-            "This main bot creates ready-to-use video downloader bots.\n\n"
-            "Your created bots can download supported videos from:\n"
-            "• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n"
-            "• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter\n\n"
-            "🎵 Every downloaded video has a MUSIC button to convert it to MP3.\n"
-            "📢 MP3 files receive a CHANNEL button.\n\n"
-            "➕ Create New Bot — create your own downloader bot\n"
-            "🤖 My Bots — manage your bots\n"
-            "🌐 Language — choose your language\n\n"
-            "If you are an administrator, use the 👑 Admin Panel button below.",
-            reply_markup=main_keyboard(user.id),
+            f"{tr(lang, 'welcome_title')}\n\n"
+            f"👋 {user.first_name or 'User'}!\n\n"
+            f"{tr(lang, 'welcome')}\n\n"
+            f"{tr(lang, 'platforms')}\n\n"
+            f"{tr(lang, 'features')}\n\n"
+            f"{tr(lang, 'instructions')}\n\n"
+            f"{tr(lang, 'admin_hint')}",
+            reply_markup=main_keyboard(user.id, lang),
         )
 
     async def admin_command(self, update, context):
         if not update.effective_user or not update.message:
             return
         if not is_admin(update.effective_user.id):
-            await update.message.reply_text(
-                "⛔ You are not authorized.\n\n"
-                f"Your ID: {update.effective_user.id}\n"
-                "Add this ID to Render OWNER_ID or ADMIN_IDS."
-            )
+            lang = await db.get_main_user_language(update.effective_user.id)
+            await update.message.reply_text(tr(lang, "unauthorized", uid=update.effective_user.id))
             return
         await self.show_dashboard(update)
 
@@ -752,28 +843,22 @@ class MainSaaSBot:
                 await self.save_max_file(update, context)
                 return
 
-        if text == "👑 Admin Panel" and is_admin(uid):
+        lang = await db.get_main_user_language(uid)
+        button = canonical_user_button(text)
+        if button == "admin" and is_admin(uid):
             await self.show_dashboard(update)
             return
-        if text == "🤖 My Bots":
+        if button == "my_bots":
             await self.show_my_bots(update)
             return
-        if text == "⭐ Premium":
+        if button == "premium":
             await premium_command(update, context)
             return
-        if text == "🌐 Language":
+        if button == "language":
             await self.language_command(update, context)
             return
-        if text == "ℹ️ Help":
-            await update.message.reply_text(
-                "ℹ️ HELP\n\n"
-                "➕ Create New Bot — create a downloader bot.\n"
-                "🤖 My Bots — see your bots.\n"
-                "Send a video link to a created bot to download it.\n"
-                "The downloaded video has a MUSIC button.\n"
-                "MUSIC creates MP3 and adds CHANNEL.\n"
-                "Admins can control the entire platform from 👑 Admin Panel."
-            )
+        if button == "help":
+            await update.message.reply_text(tr(lang, "help_text"))
             return
 
         if not is_admin(uid):
@@ -968,24 +1053,25 @@ class MainSaaSBot:
             return
 
         if not await db.is_bot_creation_enabled() and not is_admin(owner.id):
-            await message.reply_text("⛔ Bot creation is currently disabled.")
+            lang = await db.get_main_user_language(owner.id)
+            await message.reply_text(tr(lang, "creation_disabled"))
             return
 
         token = await self.get_managed_bot_token(bot_info.id)
         if not token:
-            await message.reply_text("❌ Managed bot token could not be retrieved.")
+            lang = await db.get_main_user_language(owner.id)
+            await message.reply_text(tr(lang, "token_missing"))
             return
 
         await db.add_new_bot(owner.id, token, bot_info.id, bot_info.username or "")
         started = await bot_manager.start_bot_instance(bot_info.id, token)
         if started:
             await db.update_bot_status(bot_info.id, "active")
-            await message.reply_text(
-                f"✅ Bot is online!\n\n@{bot_info.username}\nhttps://t.me/{bot_info.username}\n\n"
-                "Send /start to the new bot. It will ask for language once and remember it."
-            )
+            lang = await db.get_main_user_language(owner.id)
+            await message.reply_text(tr(lang, "bot_online", username=bot_info.username))
         else:
-            await message.reply_text("⚠️ Bot was saved, but could not be started. Check Render logs.")
+            lang = await db.get_main_user_language(owner.id)
+            await message.reply_text(tr(lang, "bot_saved_failed"))
 
     async def get_managed_bot_token(self, bot_id):
         try:
@@ -1009,7 +1095,12 @@ class MainSaaSBot:
             lang = data.split("_", 1)[1]
             if lang in LANGUAGES:
                 await db.set_main_user_language(uid, lang)
-                await query.edit_message_text(f"✅ Language saved: {LANGUAGES[lang]}")
+                await query.edit_message_text(tr(lang, "language_saved"))
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text=tr(lang, "welcome_title") + "\n\n" + tr(lang, "welcome"),
+                    reply_markup=main_keyboard(uid, lang),
+                )
             return
 
         if data == "noop":
