@@ -212,11 +212,9 @@ class MainSaaSBot:
             "• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n"
             "• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter\n\n"
             "🎵 Every downloaded video has a MUSIC button to convert it to MP3.\n"
-            "📢 MP3 files receive a CHANNEL button.\n\n"
             "➕ Create New Bot — create your own downloader bot\n"
             "🤖 My Bots — manage your bots\n"
-            "🌐 Language — choose your language\n\n"
-            "If you are an administrator, use the 👑 Admin Panel button below.",
+            "🌐 Language — choose your language\n\n",
             reply_markup=main_keyboard(user.id),
         )
 
