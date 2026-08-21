@@ -1110,35 +1110,40 @@ class MainSaaSBot:
             )
 
     async def get_managed_bot_token(self, context, service_msg) -> str:
-    try:
-        managed_bot = getattr(service_msg, "bot", None)
+        try:
+            managed_bot = getattr(service_msg, "bot", None)
 
-        if managed_bot is None:
-            logger.error("ManagedBotCreated message has no bot object.")
+            if managed_bot is None:
+                logger.error("ManagedBotCreated message has no bot object.")
+                return ""
+
+            bot_id = getattr(managed_bot, "id", None)
+
+            if not bot_id:
+                logger.error("Managed bot ID is missing.")
+                return ""
+
+            token = await context.bot.get_managed_bot_token(
+                user_id=int(bot_id)
+            )
+
+            if token:
+                logger.info(
+                    "✅ Managed bot token retrieved for bot %s",
+                    bot_id,
+                )
+                return str(token)
+
+            logger.error(
+                "❌ Telegram returned an empty managed bot token."
+            )
             return ""
 
-        bot_id = getattr(managed_bot, "id", None)
-
-        if not bot_id:
-            logger.error("Managed bot ID is missing.")
+        except Exception:
+            logger.exception(
+                "❌ Failed to retrieve managed bot token."
+            )
             return ""
-
-        token = await context.bot.get_managed_bot_token(
-            user_id=int(bot_id)
-        )
-
-        if token:
-            logger.info("✅ Managed bot token retrieved for bot %s", bot_id)
-            return str(token)
-
-        logger.error("❌ Telegram returned an empty managed bot token.")
-        return ""
-
-    except Exception:
-        logger.exception(
-            "❌ Failed to retrieve managed bot token."
-        )
-        return ""
 
     async def handle_callback(self, update, context):
         query = update.callback_query
