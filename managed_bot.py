@@ -70,8 +70,26 @@ class ManagedBotHandler:
     def get_channel_keyboard():
         return InlineKeyboardMarkup([[InlineKeyboardButton("CHANNEL 📢", url=CHANNEL_URL)]])
 
-    def get_video_keyboard(self, url_key: str):
-        return InlineKeyboardMarkup([[InlineKeyboardButton("MUSIC 🎵", callback_data=f"mconvert_{url_key}")]])
+    async def _premium_state(self):
+        active = await db.is_bot_premium(self.bot_id)
+        settings = await db.get_bot_premium_settings(self.bot_id) if active else {}
+        return active, settings
+
+    @staticmethod
+    def _custom_buttons(settings):
+        rows = []
+        for item in (settings.get("buttons") or [])[:10]:
+            label = str(item.get("label", "Button"))[:64]
+            url = str(item.get("url", "")).strip()
+            if url.startswith(("http://", "https://", "tg://")):
+                rows.append([InlineKeyboardButton(label, url=url)])
+        return rows
+
+    async def get_video_keyboard(self, url_key: str):
+        premium, settings = await self._premium_state()
+        rows = [[InlineKeyboardButton("MUSIC 🎵", callback_data=f"mconvert_{url_key}")]]
+        rows.extend(self._custom_buttons(settings))
+        return InlineKeyboardMarkup(rows)
 
     @staticmethod
     def extract_url(text: str) -> str | None:
@@ -181,7 +199,8 @@ class ManagedBotHandler:
         except Exception:
             pass
 
-        result = await downloader.download(url, user_id)
+        premium, premium_settings = await self._premium_state()
+        result = await downloader.download(url, user_id, premium=premium)
         if not result.get("success"):
             await context.bot.send_message(chat_id=chat_id, text=f"{texts['error']} {result.get('error', '')}".strip())
             return
@@ -192,21 +211,38 @@ class ManagedBotHandler:
         media_type = result.get("media_type", "video")
 
         try:
+            caption = str(premium_settings.get("caption", "")).strip() if premium else ""
+            ad_text = str(premium_settings.get("ad_text", "")).strip() if premium else ""
+            # Premium bots never show system/custom ads. Admin-configured ads are
+            # intentionally suppressed while Premium is active.
+            if not premium and ad_text:
+                caption = ad_text
+            custom_rows = self._custom_buttons(premium_settings) if premium else []
+
             if media_type == "photo":
                 await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
                 with open(file_path, "rb") as f:
-                    await context.bot.send_photo(chat_id=chat_id, photo=f)
+                    await context.bot.send_photo(
+                        chat_id=chat_id, photo=f, caption=caption or None,
+                        reply_markup=InlineKeyboardMarkup(custom_rows) if custom_rows else None,
+                    )
             elif media_type == "audio":
                 await context.bot.send_chat_action(chat_id=chat_id, action="upload_audio")
+                rows = [[InlineKeyboardButton("CHANNEL 📢", url=CHANNEL_URL)]]
+                rows.extend(custom_rows)
                 with open(file_path, "rb") as f:
-                    await context.bot.send_audio(chat_id=chat_id, audio=f, reply_markup=self.get_channel_keyboard())
+                    await context.bot.send_audio(
+                        chat_id=chat_id, audio=f, caption=caption or None,
+                        reply_markup=InlineKeyboardMarkup(rows),
+                    )
             else:
                 await context.bot.send_chat_action(chat_id=chat_id, action="upload_video")
+                rows = [[InlineKeyboardButton("MUSIC 🎵", callback_data=f"mconvert_{url_key}")]]
+                rows.extend(custom_rows)
                 with open(file_path, "rb") as f:
                     await context.bot.send_video(
-                        chat_id=chat_id,
-                        video=f,
-                        reply_markup=self.get_video_keyboard(url_key),
+                        chat_id=chat_id, video=f, caption=caption or None,
+                        reply_markup=InlineKeyboardMarkup(rows),
                     )
 
             await db.add_download(
@@ -271,18 +307,23 @@ class ManagedBotHandler:
         except Exception:
             pass
 
-        result = await downloader.download_audio(url, query.from_user.id)
+        premium, premium_settings = await self._premium_state()
+        result = await downloader.download_audio(url, query.from_user.id, premium=premium)
         if not result.get("success"):
             await query.message.reply_text(f"❌ {result.get('error', 'MP3 conversion failed')}")
             return
 
         file_path = result["file_path"]
         try:
+            caption = str(premium_settings.get("caption", "")).strip() if premium else ""
+            rows = [[InlineKeyboardButton("CHANNEL 📢", url=CHANNEL_URL)]]
+            if premium:
+                rows.extend(self._custom_buttons(premium_settings))
             with open(file_path, "rb") as f:
                 await context.bot.send_audio(
                     chat_id=query.message.chat_id,
-                    audio=f,
-                    reply_markup=self.get_channel_keyboard(),
+                    audio=f, caption=caption or None,
+                    reply_markup=InlineKeyboardMarkup(rows),
                 )
             await db.add_download(
                 self.bot_id, query.from_user.id, url=url,

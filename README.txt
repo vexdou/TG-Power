@@ -44,3 +44,20 @@ managed_bot.py
 database.py
 
 The rest of the package is included so you can replace the project files together.
+
+PREMIUM + DOWNLOADER FIXES
+==========================
+
+Downloader:
+- Pinterest/TikTok format selection now falls back to yt-dlp's generic best format instead of requiring MP4 video+M4A audio formats that may not exist.
+- YouTube uses Deno/EJS when available and multiple player clients. Render/cloud IP blocking cannot be bypassed by code alone; valid YouTube cookies or a PO token may still be required when YouTube challenges the server.
+- Premium bots use a dedicated higher-concurrency download pool.
+
+Telegram Stars Premium:
+- /premium lets a bot owner choose one of their bots and pay with Telegram Stars (XTR).
+- Default prices: 1 month 100 ⭐, 3 months 300 ⭐, 6 months 600 ⭐, 1 year 1000 ⭐.
+- Payment is verified in pre-checkout and activated only after successful payment.
+- Premium removes system/custom ads, enables premium priority processing, and supports premium caption/buttons.
+- Up to 10 custom premium URL buttons per bot.
+- Admin commands: /setpremium PLAN STARS, /premiumgrant BOT_ID DAYS, /premiumcaption BOT_ID TEXT, /premiumbutton BOT_ID LABEL|URL, /premiumad BOT_ID TEXT.
+- Premium management is also exposed through the main admin panel's Premium Center buttons.

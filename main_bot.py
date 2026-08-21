@@ -28,6 +28,7 @@ from config import Config
 from database import db
 from bot_manager import bot_manager
 from force_join import force_join_checker
+from premium import register_premium_handlers, premium_command, admin_premium_center
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,10 @@ ADMIN_BUTTONS = [
     "📜 Activity Log", "💾 Backup Info", "📦 Bot Capacity", "🔔 Notifications",
     "ℹ️ About", "❓ Help", "🔃 Refresh", "🔙 User Panel",
     "🧪 Test System", "📍 Channel Settings",
+    "⭐ Premium Center", "💰 Premium Prices",
+    "⭐ Premium Bots", "🎁 Grant Premium",
+    "✏️ Premium Caption", "🔘 Premium Buttons",
+    "📢 Premium Ads", "📊 Premium Stats",
 ]
 
 
@@ -90,8 +95,8 @@ def main_keyboard(user_id=None):
 
     rows = [
         [create_button],
-        [KeyboardButton("🤖 My Bots"), KeyboardButton("🌐 Language")],
-        [KeyboardButton("ℹ️ Help")],
+        [KeyboardButton("🤖 My Bots"), KeyboardButton("⭐ Premium")],
+        [KeyboardButton("🌐 Language"), KeyboardButton("ℹ️ Help")],
     ]
     if user_id is not None and is_admin(user_id):
         rows.append([KeyboardButton("👑 Admin Panel")])
@@ -127,6 +132,7 @@ class MainSaaSBot:
         self.app.add_handler(CommandHandler("admin", self.admin_command))
         self.app.add_handler(CommandHandler("id", self.id_command))
         self.app.add_handler(CommandHandler("language", self.language_command))
+        register_premium_handlers(self.app)
         self.app.add_handler(
             MessageHandler(filters.StatusUpdate.MANAGED_BOT_CREATED, self.handle_managed_bot_created)
         )
@@ -752,6 +758,9 @@ class MainSaaSBot:
         if text == "🤖 My Bots":
             await self.show_my_bots(update)
             return
+        if text == "⭐ Premium":
+            await premium_command(update, context)
+            return
         if text == "🌐 Language":
             await self.language_command(update, context)
             return
@@ -817,11 +826,19 @@ class MainSaaSBot:
             "🌐 Default Language": lambda: self.language_command(update, context),
             "🌐 Language": lambda: self.language_command(update, context),
             "ℹ️ About": lambda: update.message.reply_text("ℹ️ TG-Power SaaS Admin Panel — global control for bots, users, downloads, force join and platform settings.", reply_markup=admin_keyboard()),
-            "❓ Help": lambda: update.message.reply_text("❓ Use the 30-button admin panel to manage every part of the platform.", reply_markup=admin_keyboard()),
+            "❓ Help": lambda: update.message.reply_text("❓ Use the full admin panel to manage every part of the platform.", reply_markup=admin_keyboard()),
             "🔃 Refresh": lambda: self.show_dashboard(update),
             "🔙 User Panel": lambda: update.message.reply_text("👤 User Panel", reply_markup=main_keyboard(uid)),
             "🧪 Test System": lambda: self.show_health(update),
             "📍 Channel Settings": lambda: update.message.reply_text("📍 CHANNEL SETTINGS\n\nMP3 files use the CHANNEL button to open: https://t.me/downloadermain\n\nForce Join channels are managed separately under 🔐 Force Join.", reply_markup=admin_keyboard()),
+            "⭐ Premium Center": lambda: admin_premium_center(update, context),
+            "💰 Premium Prices": lambda: admin_premium_center(update, context),
+            "⭐ Premium Bots": lambda: admin_premium_center(update, context),
+            "🎁 Grant Premium": lambda: admin_premium_center(update, context),
+            "✏️ Premium Caption": lambda: admin_premium_center(update, context),
+            "🔘 Premium Buttons": lambda: admin_premium_center(update, context),
+            "📢 Premium Ads": lambda: admin_premium_center(update, context),
+            "📊 Premium Stats": lambda: admin_premium_center(update, context),
         }
         action = actions.get(text)
         if action:
