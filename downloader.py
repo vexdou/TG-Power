@@ -60,10 +60,7 @@ class MediaDownloader:
 
         return url
 
-    # ------------------ VIDEO DOWNLOAD ------------------
-
     async def download(self, url: str, user_id: int) -> dict:
-
         async with self.lock:
             if url in self.processing_urls:
                 return {
@@ -88,35 +85,25 @@ class MediaDownloader:
                 f"{user_id}_%(id)s.%(ext)s"
             )
 
-            # =========================================================
-            # COMMON OPTIONS
-            # =========================================================
-
             ydl_opts = {
                 "outtmpl": out_template,
-
-                # Better compatibility for YouTube + Pinterest
                 "format": (
                     "bestvideo*+bestaudio*/"
                     "bestvideo*/"
                     "best"
                 ),
-
                 "merge_output_format": "mp4",
-
                 "quiet": True,
                 "no_warnings": True,
-
                 "max_filesize": (
                     Config.MAX_FILE_SIZE_MB * 1024 * 1024
                 ),
-
+                "match_filter": self._duration_filter,
                 "user_agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/122.0.0.0 Safari/537.36"
                 ),
-
                 "http_headers": {
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -125,29 +112,16 @@ class MediaDownloader:
                     ),
                     "Accept-Language": "en-US,en;q=0.9"
                 },
-
                 "nocheckcertificate": True,
-
                 "retries": 3,
                 "fragment_retries": 3,
-
                 "socket_timeout": 30,
-
                 "ignoreerrors": False,
-
-                # Don't download playlists
                 "noplaylist": True,
-
-                # Keep filenames safe
                 "restrictfilenames": True,
             }
 
-            # =========================================================
-            # YOUTUBE SETTINGS
-            # =========================================================
-
             if platform == "youtube":
-
                 ydl_opts["extractor_args"] = {
                     "youtube": {
                         "player_client": [
@@ -158,23 +132,7 @@ class MediaDownloader:
                     }
                 }
 
-            # =========================================================
-            # PINTEREST SETTINGS
-            # =========================================================
-
             elif platform == "pinterest":
-
-                # Pinterest frequently provides direct MP4 media URLs.
-                # These options make yt-dlp prefer the best available
-                # video without forcing a YouTube-only format.
-                ydl_opts["format"] = (
-                    "bestvideo*+bestaudio*/"
-                    "bestvideo*/"
-                    "best"
-                )
-
-                ydl_opts["merge_output_format"] = "mp4"
-
                 ydl_opts["http_headers"] = {
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -189,10 +147,6 @@ class MediaDownloader:
                     ),
                     "Accept-Language": "en-US,en;q=0.9"
                 }
-
-            # =========================================================
-            # DOWNLOAD
-            # =========================================================
 
             result = await loop.run_in_executor(
                 executor,
@@ -217,7 +171,6 @@ class MediaDownloader:
             }
 
         except Exception as e:
-
             logger.error(
                 f"Download Error [{url}]: {str(e)}",
                 exc_info=True
@@ -229,22 +182,15 @@ class MediaDownloader:
             }
 
         finally:
-
             async with self.lock:
                 self.processing_urls.discard(url)
-
-    # ================================================================
-    # MUSIC / AUDIO / MP3
-    # ================================================================
 
     async def download_audio(
         self,
         url: str,
         user_id: int
     ) -> dict:
-
         async with self.lock:
-
             if url in self.processing_urls:
                 return {
                     "success": False,
@@ -257,7 +203,6 @@ class MediaDownloader:
             self.processing_urls.add(url)
 
         try:
-
             loop = asyncio.get_running_loop()
 
             real_url = await loop.run_in_executor(
@@ -272,28 +217,20 @@ class MediaDownloader:
                 f"audio_{user_id}_%(id)s.%(ext)s"
             )
 
-            # =========================================================
-            # MP3 SETTINGS
-            # =========================================================
-
             ydl_opts = {
                 "outtmpl": out_template,
-
                 "format": "bestaudio/best",
-
                 "quiet": True,
                 "no_warnings": True,
-
                 "max_filesize": (
                     Config.MAX_FILE_SIZE_MB * 1024 * 1024
                 ),
-
+                "match_filter": self._duration_filter,
                 "user_agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/122.0.0.0 Safari/537.36"
                 ),
-
                 "http_headers": {
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -302,16 +239,11 @@ class MediaDownloader:
                     ),
                     "Accept-Language": "en-US,en;q=0.9"
                 },
-
                 "nocheckcertificate": True,
-
                 "retries": 3,
                 "fragment_retries": 3,
-
                 "socket_timeout": 30,
-
                 "noplaylist": True,
-
                 "postprocessors": [
                     {
                         "key": "FFmpegExtractAudio",
@@ -321,9 +253,7 @@ class MediaDownloader:
                 ]
             }
 
-            # YouTube audio compatibility
             if platform == "youtube":
-
                 ydl_opts["extractor_args"] = {
                     "youtube": {
                         "player_client": [
@@ -334,9 +264,7 @@ class MediaDownloader:
                     }
                 }
 
-            # Pinterest audio compatibility
             elif platform == "pinterest":
-
                 ydl_opts["http_headers"] = {
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -367,7 +295,6 @@ class MediaDownloader:
             }
 
         except Exception as e:
-
             logger.error(
                 f"Audio Download Error [{url}]: {str(e)}",
                 exc_info=True
@@ -379,22 +306,29 @@ class MediaDownloader:
             }
 
         finally:
-
             async with self.lock:
                 self.processing_urls.discard(url)
 
-    # ================================================================
-    # YT-DLP EXECUTOR
-    # ================================================================
+    def _duration_filter(self, info_dict, *, incomplete):
+        max_seconds = Config.MAX_VIDEO_DURATION_SECONDS
+
+        duration = info_dict.get("duration")
+        if duration is not None and duration > max_seconds:
+            minutes = max_seconds // 60
+            seconds = max_seconds % 60
+            return (
+                f"Video-kan wuu ka dheer yahay {minutes}:{seconds:02d}. "
+                f"Xadka ugu badan waa {minutes} daqiiqo."
+            )
+
+        return None
 
     def _exec_dlp(
         self,
         opts: dict,
         url: str
     ) -> dict:
-
         with yt_dlp.YoutubeDL(opts) as ydl:
-
             info = ydl.extract_info(
                 url,
                 download=True
@@ -406,20 +340,13 @@ class MediaDownloader:
                 )
 
             if "entries" in info:
-
                 entries = info.get("entries")
-
                 if entries:
                     info = entries[0]
 
             filename = ydl.prepare_filename(info)
 
-            # =========================================================
-            # FIND REAL DOWNLOADED FILE
-            # =========================================================
-
             if not os.path.exists(filename):
-
                 base, _ = os.path.splitext(filename)
 
                 possible_extensions = [
@@ -433,23 +360,16 @@ class MediaDownloader:
                 ]
 
                 for ext in possible_extensions:
-
                     candidate = base + ext
 
                     if os.path.exists(candidate):
                         filename = candidate
                         break
 
-            # =========================================================
-            # SEARCH BY ID IF MERGING CHANGED FILENAME
-            # =========================================================
-
             if not os.path.exists(filename):
-
                 media_id = info.get("id")
 
                 if media_id:
-
                     candidates = list(
                         self.download_dir.glob(
                             f"*{media_id}*"
@@ -457,7 +377,6 @@ class MediaDownloader:
                     )
 
                     if candidates:
-
                         filename = str(
                             max(
                                 candidates,
@@ -466,7 +385,6 @@ class MediaDownloader:
                         )
 
             if not os.path.exists(filename):
-
                 raise FileNotFoundError(
                     "Media-ga waa la soo dejiyey laakiin "
                     "file-ka lama helin."
@@ -486,19 +404,12 @@ class MediaDownloader:
                 )
             }
 
-    # ================================================================
-    # CLEANUP
-    # ================================================================
-
     def cleanup(self, file_path: str):
-
         try:
-
             if file_path and os.path.exists(file_path):
                 os.remove(file_path)
 
         except Exception as e:
-
             logger.error(
                 f"Cleanup error: {e}"
             )
