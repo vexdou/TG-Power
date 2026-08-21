@@ -46,13 +46,12 @@ USER_I18N = {
         "create": "➕ Create New Bot", "my_bots": "🤖 My Bots", "premium": "⭐ Premium", "language": "🌐 Language", "help": "ℹ️ Help", "admin": "👑 Admin Panel",
         "choose_language": "🌐 Choose your language:",
         "language_saved": "✅ Language saved: English 🇬🇧",
-        "welcome_title": "🤖 TG-Power — Downloader Bot Builder",
+        "welcome_title": "🤖 — Downloader Bot Builder",
         "welcome": "This main bot creates ready-to-use video downloader bots.",
         "platforms": "Your created bots can download supported videos from:\n• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 Every downloaded video has a MUSIC button to convert it to MP3.\n📢 MP3 files receive a CHANNEL button.",
+        "features": "🎵 Every downloaded video has a MUSIC button to convert it to MP3.",
         "instructions": "➕ Create New Bot — create your own downloader bot\n🤖 My Bots — manage your bots\n🌐 Language — choose your language",
-        "admin_hint": "If you are an administrator, use the 👑 Admin Panel button below.",
-        "help_text": "ℹ️ HELP\n\n➕ Create New Bot — create a downloader bot.\n🤖 My Bots — see your bots.\nSend a video link to a created bot to download it.\nThe downloaded video has a MUSIC button.\nMUSIC creates MP3 and adds CHANNEL.\nAdmins can control the entire platform from 👑 Admin Panel.",
+        "help_text": "ℹ️ HELP\n\n➕ Create New Bot — create a downloader bot.\n🤖 My Bots — see your bots.\nSend a video link to a created bot to download it.\nThe downloaded video has a MUSIC button.\nMUSIC creates MP3.",
         "id": "🆔 Your Telegram ID:\n\n{uid}\n\nSet this number in Render as OWNER_ID.",
         "unauthorized": "⛔ You are not authorized.\n\nYour ID: {uid}\nAdd this ID to Render OWNER_ID or ADMIN_IDS.",
         "bot_online": "✅ Bot is online!\n\n@{username}\nhttps://t.me/{username}\n\nSend /start to your new bot. It will remember your language after you choose it.",
@@ -64,13 +63,12 @@ USER_I18N = {
         "create": "➕ Samee Bot Cusub", "my_bots": "🤖 Bots-kayga", "premium": "⭐ Premium", "language": "🌐 Luuqad", "help": "ℹ️ Caawimo", "admin": "👑 Admin Panel",
         "choose_language": "🌐 Dooro luuqadda:",
         "language_saved": "✅ Luuqadda waa la keydiyey: Soomaali 🇸🇴",
-        "welcome_title": "🤖 TG-Power — Dhisaha Downloader Bot",
+        "welcome_title": "🤖 — Dhisaha Downloader Bot",
         "welcome": "Bot-kan weyn wuxuu kuu sameeyaa bots diyaar u ah dajinta videos-ka.",
         "platforms": "Bots-ka aad sameysato waxay ka dajin karaan videos:\n• TikTok\n• Facebook\n• YouTube (ilaa 10 daqiiqo)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 Video kasta oo la dajiyo wuxuu leeyahay MUSIC si loogu beddelo MP3.\n📢 MP3-yaduna waxay leeyihiin CHANNEL.",
+        "features": "🎵 Video kasta oo la dajiyo wuxuu leeyahay MUSIC si loogu beddelo MP3.",
         "instructions": "➕ Samee Bot Cusub — samee downloader bot-kaaga\n🤖 Bots-kayga — maamul bots-kaaga\n🌐 Luuqad — beddel luuqadda bot-ka",
-        "admin_hint": "Haddii aad tahay admin, isticmaal 👑 Admin Panel.",
-        "help_text": "ℹ️ CAWIMO\n\n➕ Samee Bot Cusub — samee downloader bot.\n🤖 Bots-kayga — eeg oo maamul bots-kaaga.\nLink video u dir bot-ka aad sameysatay si loo dajiyo.\nVideo-ga wuxuu leeyahay MUSIC.\nMUSIC wuxuu sameeyaa MP3, MP3-na wuxuu leeyahay CHANNEL.\nAdmin-ku wuxuu dhammaan system-ka ka maamuli karaa 👑 Admin Panel.",
+        "help_text": "ℹ️ CAAWIMO\n\n➕ Samee Bot Cusub — samee downloader bot.\n🤖 Bots-kayga — eeg oo maamul bots-kaaga.\nLink video u dir bot-ka aad sameysatay si loo dajiyo.\nVideo-ga wuxuu leeyahay MUSIC.\nMUSIC wuxuu sameeyaa MP3.",
         "id": "🆔 Telegram ID-gaaga:\n\n{uid}\n\nNumber-kan ku geli Render OWNER_ID.",
         "unauthorized": "⛔ Looma oggola.\n\nID-gaaga: {uid}\nKu dar Render OWNER_ID ama ADMIN_IDS.",
         "bot_online": "✅ Bot-ku wuu shaqeynayaa!\n\n@{username}\nhttps://t.me/{username}\n\nU dir /start bot-kaaga cusub. Luuqadda aad doorato wuu xasuusanayaa.",
@@ -82,13 +80,12 @@ USER_I18N = {
         "create": "➕ إنشاء بوت جديد", "my_bots": "🤖 بوتاتي", "premium": "⭐ بريميوم", "language": "🌐 اللغة", "help": "ℹ️ المساعدة", "admin": "👑 لوحة الإدارة",
         "choose_language": "🌐 اختر لغتك:",
         "language_saved": "✅ تم حفظ اللغة: العربية 🇸🇦",
-        "welcome_title": "🤖 TG-Power — منشئ بوتات التحميل",
+        "welcome_title": "🤖 — منشئ بوتات التحميل",
         "welcome": "هذا البوت الرئيسي ينشئ لك بوتات جاهزة لتحميل الفيديوهات.",
         "platforms": "يمكن لبوتاتك تحميل الفيديو من:\n• TikTok\n• Facebook\n• YouTube (حتى 10 دقائق)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 كل فيديو يتم تحميله يحتوي على زر MUSIC لتحويله إلى MP3.\n📢 ملفات MP3 تحتوي على زر CHANNEL.",
+        "features": "🎵 كل فيديو يتم تحميله يحتوي على زر MUSIC لتحويله إلى MP3.",
         "instructions": "➕ إنشاء بوت جديد — أنشئ بوت التحميل الخاص بك\n🤖 بوتاتي — إدارة بوتاتك\n🌐 اللغة — تغيير لغة البوت",
-        "admin_hint": "إذا كنت مسؤولاً استخدم زر 👑 لوحة الإدارة.",
-        "help_text": "ℹ️ المساعدة\n\n➕ إنشاء بوت جديد — إنشاء بوت لتحميل الفيديو.\n🤖 بوتاتي — عرض وإدارة بوتاتك.\nأرسل رابط فيديو إلى البوت ليتم تحميله.\nالفيديو يحتوي على زر MUSIC.\nMUSIC يحول الفيديو إلى MP3 وMP3 يحتوي على CHANNEL.\nيمكن للمسؤول إدارة المنصة من 👑 لوحة الإدارة.",
+        "help_text": "ℹ️ المساعدة\n\n➕ إنشاء بوت جديد — إنشاء بوت لتحميل الفيديو.\n🤖 بوتاتي — عرض وإدارة بوتاتك.\nأرسل رابط فيديو إلى البوت ليتم تحميله.\nالفيديو يحتوي على زر MUSIC.\nMUSIC يحول الفيديو إلى MP3.",
         "id": "🆔 معرف Telegram الخاص بك:\n\n{uid}\n\nضع هذا الرقم في Render باسم OWNER_ID.",
         "unauthorized": "⛔ غير مصرح لك.\n\nمعرفك: {uid}\nأضف المعرف إلى OWNER_ID أو ADMIN_IDS في Render.",
         "bot_online": "✅ البوت يعمل الآن!\n\n@{username}\nhttps://t.me/{username}\n\nأرسل /start إلى البوت الجديد. سيحفظ اللغة التي تختارها.",
@@ -100,13 +97,12 @@ USER_I18N = {
         "create": "➕ Crear bot nuevo", "my_bots": "🤖 Mis bots", "premium": "⭐ Premium", "language": "🌐 Idioma", "help": "ℹ️ Ayuda", "admin": "👑 Panel de administración",
         "choose_language": "🌐 Elige tu idioma:",
         "language_saved": "✅ Idioma guardado: Español 🇪🇸",
-        "welcome_title": "🤖 TG-Power — Creador de bots descargadores",
+        "welcome_title": "🤖 — Creador de bots descargadores",
         "welcome": "Este bot principal crea bots listos para descargar vídeos.",
         "platforms": "Tus bots pueden descargar vídeos de:\n• TikTok\n• Facebook\n• YouTube (hasta 10 minutos)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 Cada vídeo descargado tiene un botón MUSIC para convertirlo a MP3.\n📢 Los MP3 reciben un botón CHANNEL.",
+        "features": "🎵 Cada vídeo descargado tiene un botón MUSIC para convertirlo a MP3.",
         "instructions": "➕ Crear bot nuevo — crea tu bot descargador\n🤖 Mis bots — administra tus bots\n🌐 Idioma — cambia el idioma del bot",
-        "admin_hint": "Si eres administrador, usa el botón 👑 Panel de administración.",
-        "help_text": "ℹ️ AYUDA\n\n➕ Crear bot nuevo — crea un bot descargador.\n🤖 Mis bots — mira tus bots.\nEnvía un enlace de vídeo a un bot creado para descargarlo.\nEl vídeo tiene un botón MUSIC.\nMUSIC crea MP3 y añade CHANNEL.\nLos administradores controlan toda la plataforma desde 👑 Panel de administración.",
+        "help_text": "ℹ️ AYUDA\n\n➕ Crear bot nuevo — crea un bot descargador.\n🤖 Mis bots — mira tus bots.\nEnvía un enlace de vídeo a un bot creado para descargarlo.\nEl vídeo tiene un botón MUSIC.\nMUSIC crea MP3.",
         "id": "🆔 Tu ID de Telegram:\n\n{uid}\n\nPon este número en Render como OWNER_ID.",
         "unauthorized": "⛔ No tienes autorización.\n\nTu ID: {uid}\nAñádelo a OWNER_ID o ADMIN_IDS en Render.",
         "bot_online": "✅ ¡El bot está activo!\n\n@{username}\nhttps://t.me/{username}\n\nEnvía /start a tu nuevo bot. Recordará el idioma que elijas.",
@@ -318,12 +314,11 @@ class MainSaaSBot:
         lang = await db.get_main_user_language(user.id)
         await update.message.reply_text(
             f"{tr(lang, 'welcome_title')}\n\n"
-            f"👋 {user.first_name or 'User'}!\n\n"
+            f"👋 Welcome, {user.first_name or 'USER'}!\n\n"
             f"{tr(lang, 'welcome')}\n\n"
             f"{tr(lang, 'platforms')}\n\n"
             f"{tr(lang, 'features')}\n\n"
-            f"{tr(lang, 'instructions')}\n\n"
-            f"{tr(lang, 'admin_hint')}",
+            f"{tr(lang, 'instructions')}",
             reply_markup=main_keyboard(user.id, lang),
         )
 
@@ -526,7 +521,6 @@ class MainSaaSBot:
             await update.message.reply_text("❌ Send a channel username such as @MyChannel.", reply_markup=admin_keyboard())
             return
 
-        # The MAIN bot must be an administrator/owner before the channel can be enabled.
         verification = await force_join_checker.verify_admin_channels([value])
         if not verification or not verification[0]["ok"]:
             error = (verification[0].get("error") if verification else None) or "Main bot cannot access this channel."
@@ -558,7 +552,6 @@ class MainSaaSBot:
             minutes = int(value)
             if minutes < 1 or minutes > 120:
                 raise ValueError
-            # Config is loaded at process start, but downloader reads this value dynamically.
             Config.MAX_VIDEO_DURATION_SECONDS = minutes * 60
             context.user_data.clear()
             await update.message.reply_text(f"✅ Max video duration set to {minutes} minutes.", reply_markup=admin_keyboard())
@@ -874,347 +867,95 @@ class MainSaaSBot:
             "📥 Downloads": lambda: self.show_downloads(update),
             "📈 Download Stats": lambda: self.show_download_stats(update),
             "❌ Failed Downloads": lambda: self.show_failed_downloads(update),
-            "🕘 Recent Downloads": lambda: self.show_recent_downloads(update),
-            "📢 Broadcast All": lambda: self.broadcast_all_prompt(update, context),
-            "📣 Broadcast Bot": lambda: self.broadcast_bot_prompt(update),
-            "👀 Broadcast Preview": lambda: self.broadcast_preview(update, context),
-            "🔐 Force Join": lambda: self.force_join_menu(update),
-            "🔎 Force Join Check": lambda: self.verify_force_join_channels(update),
-            "⚙️ Bot Creation": lambda: self.creation_setting(update),
-            "▶️ Start Bot": lambda: self.choose_bot(update, "start"),
-            "⏹ Stop Bot": lambda: self.choose_bot(update, "stop"),
-            "🔄 Restart Bot": lambda: self.choose_bot(update, "restart"),
-            "🗑 Delete Bot": lambda: self.choose_bot(update, "confirmdel"),
-            "❤️ Bot Health": lambda: self.show_health(update),
-            "🧰 System Settings": lambda: self.system_settings(update),
-            "⏱ Max Video": lambda: self._prompt_simple(update, context, "max_video", "Send maximum video duration in minutes (1–120):"),
-            "📦 Max File": lambda: self._prompt_simple(update, context, "max_file", "Send maximum file size in MB (5–2000):"),
-            "🛠 Maintenance": lambda: self.maintenance_setting(update),
-            "♻️ Reload Bots": lambda: self.reload_bots(update),
-            "🚨 Bot Errors": lambda: self.bot_errors(update),
-            "📋 User Export": lambda: self.user_export(update),
-            "🤖 Bot Export": lambda: self.bot_export(update),
-            "🧼 Cleanup Temp": lambda: self.cleanup_temp(update),
-            "🗄 Database Status": lambda: self.database_status(update),
-            "📡 Queue Status": lambda: self.queue_status(update),
-            "⏲ Uptime": lambda: self.uptime_status(update),
-            "🔒 Security": lambda: self.security_status(update),
-            "🧑‍💼 Admin ID": lambda: self.admin_id_status(update),
-            "📊 Platform Stats": lambda: self.platform_stats(update),
-            "🔄 Reset Settings": lambda: self.reset_settings(update),
-            "📜 Activity Log": lambda: self.activity_log(update),
-            "💾 Backup Info": lambda: self.backup_info(update),
-            "📦 Bot Capacity": lambda: self.bot_capacity(update),
-            "🔔 Notifications": lambda: self.notifications_status(update),
-            "🧹 Clear Downloads": lambda: self.clear_downloads(update),
-            "🧽 Clear Pending": lambda: self.clear_pending(update),
-            "🌐 Default Language": lambda: self.language_command(update, context),
-            "🌐 Language": lambda: self.language_command(update, context),
-            "ℹ️ About": lambda: update.message.reply_text("ℹ️ TG-Power SaaS Admin Panel — global control for bots, users, downloads, force join and platform settings.", reply_markup=admin_keyboard()),
-            "❓ Help": lambda: update.message.reply_text("❓ Use the full admin panel to manage every part of the platform.", reply_markup=admin_keyboard()),
-            "🔃 Refresh": lambda: self.show_dashboard(update),
-            "🔙 User Panel": lambda: update.message.reply_text("👤 User Panel", reply_markup=main_keyboard(uid)),
-            "🧪 Test System": lambda: self.show_health(update),
-            "📍 Channel Settings": lambda: update.message.reply_text("📍 CHANNEL SETTINGS\n\nMP3 files use the CHANNEL button to open: https://t.me/downloadermain\n\nForce Join channels are managed separately under 🔐 Force Join.", reply_markup=admin_keyboard()),
-            "⭐ Premium Center": lambda: admin_premium_center(update, context),
-            "💰 Premium Prices": lambda: admin_premium_center(update, context),
-            "⭐ Premium Bots": lambda: admin_premium_center(update, context),
-            "🎁 Grant Premium": lambda: admin_premium_center(update, context),
-            "✏️ Premium Caption": lambda: admin_premium_center(update, context),
-            "🔘 Premium Buttons": lambda: admin_premium_center(update, context),
-            "📢 Premium Ads": lambda: admin_premium_center(update, context),
-            "📊 Premium Stats": lambda: admin_premium_center(update, context),
-        }
-        action = actions.get(text)
-        if action:
-            await action()
+            "Halkan waa koodkaagii oo dhamaystiran, oo laga reebay dhammaan fariimaha ku saabsan Admin Panel-ka iyo Channel Button-ka MP3-ga:
 
-    async def show_bot_owners(self, update):
-        bots = await db.get_all_bots()
-        owners = {}
-        for bot in bots:
-            owners.setdefault(bot.get("owner_id"), 0)
-            owners[bot.get("owner_id")] += 1
-        lines = ["👑 BOT OWNERS\n"] + [f"• {owner}: {count} bot(s)" for owner, count in owners.items()]
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+```python
+import asyncio
+import logging
+import os
+import re
+import tempfile
+import time
+from datetime import datetime, timezone
 
-    async def show_failed_downloads(self, update):
-        rows = await db.downloads.find({"status": "failed"}).sort("created_at", -1).to_list(length=30)
-        lines = ["❌ FAILED DOWNLOADS\n"]
-        for row in rows:
-            lines.append(f"• bot={row.get('bot_id')} user={row.get('user_id')}\n  {row.get('url','')}")
-        if len(lines) == 1:
-            lines.append("No failed downloads.")
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButtonRequestManagedBot,
+)
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+    ContextTypes,
+)
+from telegram.error import TelegramError, Forbidden
 
-    async def show_recent_downloads(self, update):
-        rows = await db.downloads.find({}).sort("created_at", -1).to_list(length=30)
-        lines = ["🕘 RECENT DOWNLOADS\n"]
-        for row in rows:
-            lines.append(f"• {row.get('media_type','video')} | bot={row.get('bot_id')} | user={row.get('user_id')} | {row.get('status')}")
-        if len(lines) == 1:
-            lines.append("No downloads yet.")
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
+from config import Config
+from database import db
+from bot_manager import bot_manager
+from force_join import force_join_checker
+from premium import register_premium_handlers, premium_command, admin_premium_center
 
-    async def broadcast_preview(self, update, context):
-        context.user_data["state"] = "broadcast_preview"
-        await update.message.reply_text("👀 Send the text/media and I will show you the broadcast preview without sending it.")
+logger = logging.getLogger(__name__)
 
-    async def bot_export(self, update):
-        bots = await db.get_all_bots()
-        text = "BOT_ID,USERNAME,OWNER_ID,STATUS\n"
-        for b in bots:
-            text += f"{b.get('bot_id')},{b.get('username','')},{b.get('owner_id')},{b.get('status','')}\n"
-        await update.message.reply_text("🤖 BOT EXPORT\n\n" + text[:3800], reply_markup=admin_keyboard())
+LANGUAGES = {
+    "en": "English 🇬🇧",
+    "so": "Soomaali 🇸🇴",
+    "ar": "العربية 🇸🇦",
+    "es": "Español 🇪🇸",
+}
 
-    async def cleanup_temp(self, update):
-        removed = 0
-        root = Config.DOWNLOAD_DIR
-        if os.path.isdir(root):
-            for name in os.listdir(root):
-                path = os.path.join(root, name)
-                try:
-                    if os.path.isfile(path):
-                        os.remove(path); removed += 1
-                except OSError:
-                    pass
-        await update.message.reply_text(f"🧼 Temporary download cleanup complete. Removed: {removed}", reply_markup=admin_keyboard())
-
-    async def database_status(self, update):
-        try:
-            await db.client.admin.command("ping")
-            text = "🟢 MongoDB connected"
-        except Exception as exc:
-            text = f"🔴 MongoDB error: {exc}"
-        await update.message.reply_text(f"🗄 DATABASE STATUS\n\n{text}", reply_markup=admin_keyboard())
-
-    async def queue_status(self, update):
-        pending = await db.pending_downloads.count_documents({})
-        starting = len(bot_manager.starting_bots)
-        running = len(bot_manager.running_bots)
-        await update.message.reply_text(f"📡 QUEUE STATUS\n\nPending Force Join: {pending}\nStarting bots: {starting}\nRunning bots: {running}", reply_markup=admin_keyboard())
-
-    async def uptime_status(self, update):
-        started = getattr(self, "started_at", None)
-        value = "unknown" if not started else str(datetime.now(timezone.utc) - started).split('.')[0]
-        await update.message.reply_text(f"⏲ PLATFORM UPTIME\n\n{value}", reply_markup=admin_keyboard())
-
-    async def security_status(self, update):
-        await update.message.reply_text("🔒 SECURITY\n\n• Admin access uses OWNER_ID + ADMIN_IDS\n• Force Join is checked by the MAIN bot token\n• Managed bots do not need channel admin rights\n• Bot tokens are stored server-side and never shown to users.", reply_markup=admin_keyboard())
-
-    async def admin_id_status(self, update):
-        await update.message.reply_text(f"🧑‍💼 ADMIN IDS\n\nOWNER_ID: {Config.OWNER_ID}\nADMIN_IDS: {', '.join(map(str, Config.ADMIN_IDS)) or 'none'}", reply_markup=admin_keyboard())
-
-    async def platform_stats(self, update):
-        stats = await db.get_global_stats()
-        await update.message.reply_text("📊 PLATFORM STATS\n\n" + "\n".join(f"{k}: {v}" for k,v in stats.items()), reply_markup=admin_keyboard())
-
-    async def reset_settings(self, update):
-        for key in ["maintenance_mode", "bot_creation_enabled", "global_force_join_channels"]:
-            await db.delete_system_setting(key)
-        await update.message.reply_text("🔄 Global settings reset to defaults. Force Join is now empty and bot creation is enabled by default.", reply_markup=admin_keyboard())
-
-    async def activity_log(self, update):
-        await update.message.reply_text("📜 ACTIVITY LOG\n\nUse Render logs for live process logs. MongoDB stores bot/download status and errors.", reply_markup=admin_keyboard())
-
-    async def backup_info(self, update):
-        await update.message.reply_text("💾 BACKUP INFO\n\nDatabase: MongoDB\nBot records, users, downloads and global settings are stored there. Use MongoDB Atlas backup/restore for production backups.", reply_markup=admin_keyboard())
-
-    async def bot_capacity(self, update):
-        total = await db.count_bots()
-        await update.message.reply_text(f"📦 BOT CAPACITY\n\nManaged bots in database: {total}\nThe platform has no artificial 1M-bot UI limit; actual Telegram/API/hosting limits still apply.", reply_markup=admin_keyboard())
-
-    async def notifications_status(self, update):
-        await update.message.reply_text("🔔 NOTIFICATIONS\n\nAdmin notifications are currently represented by Render logs and bot status/error records.", reply_markup=admin_keyboard())
-
-    async def _prompt_simple(self, update, context, state, text):
-        context.user_data["state"] = state
-        await update.message.reply_text(text)
-
-    async def show_my_bots(self, update):
-        bots = await db.get_user_bots(update.effective_user.id)
-        if not bots:
-            await update.message.reply_text("❌ You do not have a managed bot yet.")
-            return
-        buttons = []
-        text = "🤖 MY BOTS\n\n"
-        for bot in bots:
-            name = bot.get("username", "N/A")
-            text += f"@{name} — {bot.get('status','unknown')}\n"
-            buttons.append([InlineKeyboardButton(f"📊 @{name}", callback_data=f"ownerstats:{bot['bot_id']}")])
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def handle_managed_bot_created(self, update, context):
-        message = update.message
-        info = getattr(message, "managed_bot_created", None) if message else None
-        owner = update.effective_user
-        bot_info = getattr(info, "bot", None) if info else None
-        if not message or not owner or not bot_info:
-            return
-
-        if not await db.is_bot_creation_enabled() and not is_admin(owner.id):
-            lang = await db.get_main_user_language(owner.id)
-            await message.reply_text(tr(lang, "creation_disabled"))
-            return
-
-        token = await self.get_managed_bot_token(bot_info.id)
-        if not token:
-            lang = await db.get_main_user_language(owner.id)
-            await message.reply_text(tr(lang, "token_missing"))
-            return
-
-        await db.add_new_bot(owner.id, token, bot_info.id, bot_info.username or "")
-        started = await bot_manager.start_bot_instance(bot_info.id, token)
-        if started:
-            await db.update_bot_status(bot_info.id, "active")
-            lang = await db.get_main_user_language(owner.id)
-            await message.reply_text(tr(lang, "bot_online", username=bot_info.username))
-        else:
-            lang = await db.get_main_user_language(owner.id)
-            await message.reply_text(tr(lang, "bot_saved_failed"))
-
-    async def get_managed_bot_token(self, bot_id):
-        try:
-            return await self.app.bot.get_managed_bot_token(bot_id)
-        except Exception:
-            logger.exception("Managed bot token error")
-            return None
-
-    async def handle_callback(self, update, context):
-        query = update.callback_query
-        if not query:
-            return
-        data = query.data or ""
-        uid = query.from_user.id
-        try:
-            await query.answer()
-        except Exception:
-            pass
-
-        if data.startswith("lang_"):
-            lang = data.split("_", 1)[1]
-            if lang in LANGUAGES:
-                await db.set_main_user_language(uid, lang)
-                await query.edit_message_text(tr(lang, "language_saved"))
-                await context.bot.send_message(
-                    chat_id=uid,
-                    text=tr(lang, "welcome_title") + "\n\n" + tr(lang, "welcome"),
-                    reply_markup=main_keyboard(uid, lang),
-                )
-            return
-
-        if data == "noop":
-            return
-
-        if data.startswith(("manage:", "bstats:", "start:", "stop:", "restart:", "confirmdel:", "delete:", "broadcast:", "bu:", "allbots", "setting:", "fj:", "clear:")) and not is_admin(uid):
-            await query.answer("⛔ Admin only.", show_alert=True)
-            return
-
-        if data == "allbots":
-            await self.show_all_bots_from_callback(query)
-            return
-        if data.startswith("manage:"):
-            await self.manage_bot_menu(query, int(data.split(":")[1]))
-            return
-        if data.startswith("bstats:"):
-            await self.show_bot_stats(query, int(data.split(":")[1]))
-            return
-        if data.startswith("bu:"):
-            await self.show_bot_users_for(query, int(data.split(":")[1]))
-            return
-        if data.startswith("start:"):
-            await self.start_managed_bot(query, int(data.split(":")[1]))
-            return
-        if data.startswith("stop:"):
-            await self.stop_managed_bot(query, int(data.split(":")[1]))
-            return
-        if data.startswith("restart:"):
-            await self.restart_managed_bot(query, int(data.split(":")[1]))
-            return
-        if data.startswith("broadcast:"):
-            bot_id = int(data.split(":")[1])
-            context.user_data["state"] = "broadcast_bot"
-            context.user_data["broadcast_bot_id"] = bot_id
-            await query.edit_message_text("📣 Send the text/media to broadcast to this bot's users.")
-            return
-        if data.startswith("confirmdel:"):
-            bot_id = int(data.split(":")[1])
-            await query.edit_message_text(
-                "⚠️ Permanently delete this bot?",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("❌ Cancel", callback_data=f"manage:{bot_id}"),
-                    InlineKeyboardButton("🗑 YES DELETE", callback_data=f"delete:{bot_id}"),
-                ]]),
-            )
-            return
-        if data.startswith("delete:"):
-            await self.delete_managed_bot(query, int(data.split(":")[1]))
-            return
-
-        if data == "fj:verify":
-            channels = await db.get_global_force_join_channels()
-            results = await force_join_checker.verify_admin_channels(channels)
-            lines = ["🔎 MAIN BOT FORCE-JOIN CHECK\n"]
-            for row in results:
-                lines.append(f"{'🟢' if row['ok'] else '🔴'} {row['channel']} — {row['status']}")
-                if row.get('error'):
-                    lines.append(f"   {row['error']}")
-            await query.edit_message_text("\n".join(lines)[:4000])
-            return
-        if data == "fj:add":
-            context.user_data["state"] = "force_add"
-            await query.edit_message_text("➕ Send channel username, for example @MyChannel.")
-            return
-        if data.startswith("fj:del:"):
-            index = int(data.split(":")[2])
-            await db.remove_global_force_join_channel(index)
-            await query.edit_message_text("✅ Channel removed. Use the admin panel → 🔐 Force Join to view the new list.")
-            return
-        if data == "fj:clear":
-            await db.clear_global_force_join_channels()
-            await query.edit_message_text("🧹 Global Force Join cleared. All managed bots are now unrestricted.")
-            return
-
-        if data == "setting:creation:on":
-            await db.set_bot_creation_enabled(True)
-            await query.edit_message_text("✅ Bot creation ENABLED.")
-            return
-        if data == "setting:creation:off":
-            await db.set_bot_creation_enabled(False)
-            await query.edit_message_text("🔴 Bot creation DISABLED.")
-            return
-        if data == "setting:maintenance:on":
-            await db.set_system_setting("maintenance_mode", True)
-            await query.edit_message_text("🛠 Maintenance mode ENABLED for all managed bots.")
-            return
-        if data == "setting:maintenance:off":
-            await db.set_system_setting("maintenance_mode", False)
-            await query.edit_message_text("🟢 Maintenance mode DISABLED.")
-            return
-        if data == "clear:downloads":
-            await db.downloads.delete_many({})
-            await query.edit_message_text("🧹 Download history cleared.")
-            return
-        if data == "clear:pending":
-            await db.pending_downloads.delete_many({})
-            await query.edit_message_text("🧽 Pending force-join downloads cleared.")
-            return
-
-        if data.startswith("ownerstats:"):
-            bot_id = int(data.split(":")[1])
-            bot = await db.get_bot(bot_id)
-            if not bot or int(bot.get("owner_id", 0)) != uid:
-                await query.answer("⛔ Not your bot.", show_alert=True)
-                return
-            stats = await db.get_bot_stats(bot_id)
-            await query.edit_message_text(
-                f"📊 @{bot.get('username','N/A')}\n\n"
-                f"👥 Users: {stats['total_users']}\n📥 Downloads: {stats['total_downloads']}\n"
-                f"🎬 Videos: {stats['videos']}\n🎵 Audio: {stats['audio']}"
-            )
-
-    async def error_handler(self, update, context):
-        logger.error("Main bot error: %s", context.error, exc_info=True)
-
-
-main_bot = MainSaaSBot()
+# Main-bot user interface translations. Admin panel intentionally stays in English
+# so administrators have stable button names regardless of their personal language.
+USER_I18N = {
+    "en": {
+        "create": "➕ Create New Bot", "my_bots": "🤖 My Bots", "premium": "⭐ Premium", "language": "🌐 Language", "help": "ℹ️ Help", "admin": "👑 Admin Panel",
+        "choose_language": "🌐 Choose your language:",
+        "language_saved": "✅ Language saved: English 🇬🇧",
+        "welcome_title": "🤖 — Downloader Bot Builder",
+        "welcome": "This main bot creates ready-to-use video downloader bots.",
+        "platforms": "Your created bots can download supported videos from:\n• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 Every downloaded video has a MUSIC button to convert it to MP3.",
+        "instructions": "➕ Create New Bot — create your own downloader bot\n🤖 My Bots — manage your bots\n🌐 Language — choose your language",
+        "help_text": "ℹ️ HELP\n\n➕ Create New Bot — create a downloader bot.\n🤖 My Bots — see your bots.\nSend a video link to a created bot to download it.\nThe downloaded video has a MUSIC button.\nMUSIC creates MP3.",
+        "id": "🆔 Your Telegram ID:\n\n{uid}\n\nSet this number in Render as OWNER_ID.",
+        "unauthorized": "⛔ You are not authorized.\n\nYour ID: {uid}\nAdd this ID to Render OWNER_ID or ADMIN_IDS.",
+        "bot_online": "✅ Bot is online!\n\n@{username}\n[https://t.me/](https://t.me/){username}\n\nSend /start to your new bot. It will remember your language after you choose it.",
+        "bot_saved_failed": "⚠️ Bot was saved, but could not be started. Check Render logs.",
+        "token_missing": "❌ Managed bot token could not be retrieved.",
+        "creation_disabled": "⛔ Bot creation is currently disabled.",
+    },
+    "so": {
+        "create": "➕ Samee Bot Cusub", "my_bots": "🤖 Bots-kayga", "premium": "⭐ Premium", "language": "🌐 Luuqad", "help": "ℹ️ Caawimo", "admin": "👑 Admin Panel",
+        "choose_language": "🌐 Dooro luuqadda:",
+        "language_saved": "✅ Luuqadda waa la keydiyey: Soomaali 🇸🇴",
+        "welcome_title": "🤖 — Dhisaha Downloader Bot",
+        "welcome": "Bot-kan weyn wuxuu kuu sameeyaa bots diyaar u ah dajinta videos-ka.",
+        "platforms": "Bots-ka aad sameysato waxay ka dajin karaan videos:\n• TikTok\n• Facebook\n• YouTube (ilaa 10 daqiiqo)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 Video kasta oo la dajiyo wuxuu leeyahay MUSIC si loogu beddelo MP3.",
+        "instructions": "➕ Samee Bot Cusub — samee downloader bot-kaaga\n🤖 Bots-kayga — maamul bots-kaaga\n🌐 Luuqad — beddel luuqadda bot-ka",
+        "help_text": "ℹ️ CAAWIMO\n\n➕ Samee Bot Cusub — samee downloader bot.\n🤖 Bots-kayga — eeg oo maamul bots-kaaga.\nLink video u dir bot-ka aad sameysatay si loo dajiyo.\nVideo-ga wuxuu leeyahay MUSIC.\nMUSIC wuxuu sameeyaa MP3.",
+        "id": "🆔 Telegram ID-gaaga:\n\n{uid}\n\nNumber-kan ku geli Render OWNER_ID.",
+        "unauthorized": "⛔ Looma oggola.\n\nID-gaaga: {uid}\nKu dar Render OWNER_ID ama ADMIN_IDS.",
+        "bot_online": "✅ Bot-ku wuu shaqeynayaa!\n\n@{username}\n[https://t.me/](https://t.me/){username}\n\nU dir /start bot-kaaga cusub. Luuqadda aad doorato wuu xasuusanayaa.",
+        "bot_saved_failed": "⚠️ Bot-ka waa la keydiyey laakiin lama bilaabi karin. Fiiri Render logs.",
+        "token_missing": "❌ Token-ka bot-ka lama heli karo.",
+        "creation_disabled": "⛔ Sameynta bots-ka hadda waa la xiray.",
+    },
+    "ar": {
+        "create": "➕ إنشاء بوت جديد", "my_bots": "🤖 بوتاتي", "premium": "⭐ بريميوم", "language": "🌐 اللغة", "help": "ℹ️ المساعدة", "admin": "👑 لوحة الإدارة",
+        "choose_language": "🌐 اختر لغتك:",
+        "language_saved": "✅ تم حفظ اللغة: العربية 🇸🇦",
+        "welcome_title": "🤖 — منشئ بوتات التحميل",
+        "welcome": "هذا البوت الرئيسي ينشئ لك بوتات جاهزة لتحميل الفيديوهات.",
+        "platforms": "يمكن لبوتاتك تحميل الفيديو من:\n• TikTok\n• Facebook\n• YouTube (حتى 10 دقائق)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
+        "features": "🎵 كل فيديو يتم تحميله يحتوي على زر MUSIC لتحويله إلى MP3.",
+        "instructions": "➕ إنشاء بوت جديد — أنشئ بوت التحميل الخاص بك\n🤖 بوتاتي — إدارة بوتاتك\n🌐 اللغة — تغيير لغة البوت",
+        "help_text": "ℹ️ المساعدة\n\n➕ إنشاء بوت جديد — إنشاء بوت لتحميل الفيديو.\n🤖 بوتاتي — عرض وإدارة بوتاتك.\nأرسل رابط فيديو إلى البوت ليتم تحميله.\nالفيديو يحتوي على زر MUSIC.\nMUSIC يحول الفيديو إلى MP3.",
+        "id": "🆔 معرف Telegram الخاص بك:\n\n{uid}\n\nضع هذا الرقم
