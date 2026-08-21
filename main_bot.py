@@ -12,8 +12,12 @@ from telegram import (
     KeyboardButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButtonRequestManagedBot,
 )
+try:
+    from telegram import KeyboardButtonRequestManagedBot
+except ImportError:
+    KeyboardButtonRequestManagedBot = None
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -116,10 +120,6 @@ USER_I18N = {
     },
 }
 
-def user_lang(uid: int) -> str:
-    # Callers that already have a stored language should pass it through.
-    return "en"
-
 def tr(lang: str, key: str, **kwargs) -> str:
     lang = lang if lang in USER_I18N else "en"
     return USER_I18N[lang][key].format(**kwargs)
@@ -180,17 +180,21 @@ def is_admin(user_id: int) -> bool:
 
 def main_keyboard(user_id=None, lang="en"):
     request_id = int(time.time() * 1000) % 2147483647
-    try:
-        create_button = KeyboardButton(
-            text=localized_button(lang, "create"),
-            request_managed_bot=KeyboardButtonRequestManagedBot(
-                request_id=request_id,
-                suggested_name="My Downloader Bot",
-                suggested_username="MyDownloaderBot",
-            ),
-        )
-    except TypeError:
-        create_button = KeyboardButton("➕ Create New Bot")
+    create_button = None
+    if KeyboardButtonRequestManagedBot is not None:
+        try:
+            create_button = KeyboardButton(
+                text=localized_button(lang, "create"),
+                request_managed_bot=KeyboardButtonRequestManagedBot(
+                    request_id=request_id,
+                    suggested_name="My Downloader Bot",
+                    suggested_username="MyDownloaderBot",
+                ),
+            )
+        except Exception:
+            create_button = KeyboardButton(localized_button(lang, "create"))
+    else:
+        create_button = KeyboardButton(localized_button(lang, "create"))
 
     rows = [
         [create_button],
@@ -384,6 +388,9 @@ class MainSaaSBot:
 
     async def show_all_bots_from_callback(self, query):
         bots = await db.get_all_bots()
+        if not bots:
+            await query.edit_message_text("🤖 No managed bots yet.")
+            return
         buttons = []
         for bot in bots:
             bid = bot["bot_id"]
@@ -394,7 +401,7 @@ class MainSaaSBot:
             ])
         await query.edit_message_text(
             "🤖 ALL MANAGED BOTS",
-            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+            reply_markup=InlineKeyboardMarkup(buttons),
         )
 
     async def choose_bot(self, update, mode):
@@ -533,7 +540,6 @@ class MainSaaSBot:
             await update.message.reply_text("❌ Send a channel username such as @MyChannel.", reply_markup=admin_keyboard())
             return
 
-        # The MAIN bot must be an administrator/owner before the channel can be enabled.
         verification = await force_join_checker.verify_admin_channels([value])
         if not verification or not verification[0]["ok"]:
             error = (verification[0].get("error") if verification else None) or "Main bot cannot access this channel."
@@ -565,7 +571,6 @@ class MainSaaSBot:
             minutes = int(value)
             if minutes < 1 or minutes > 120:
                 raise ValueError
-            # Config is loaded at process start, but downloader reads this value dynamically.
             Config.MAX_VIDEO_DURATION_SECONDS = minutes * 60
             context.user_data.clear()
             await update.message.reply_text(f"✅ Max video duration set to {minutes} minutes.", reply_markup=admin_keyboard())
@@ -852,6 +857,16 @@ class MainSaaSBot:
 
         lang = await db.get_main_user_language(uid)
         button = canonical_user_button(text)
+
+        if button == "create":
+            if not await db.is_bot_creation_enabled():
+                await update.message.reply_text(tr(lang, "creation_disabled"))
+            else:
+                await update.message.reply_text(
+                    tr(lang, "welcome_title") + "\n\n" + tr(lang, "instructions"),
+                    reply_markup=main_keyboard(uid, lang)
+                )
+            return
         if button == "admin" and is_admin(uid):
             await self.show_dashboard(update)
             return
@@ -917,7 +932,7 @@ class MainSaaSBot:
             "💾 Backup Info": lambda: self.backup_info(update),
             "📦 Bot Capacity": lambda: self.bot_capacity(update),
             "🔔 Notifications": lambda: self.notifications_status(update),
-            "ℹ️ About": lambda: update.message.reply_text("ℹ️ TG-Power SaaS SaaS Downloader Platform v3.0", reply_markup=admin_keyboard()),
+            "ℹ️ About": lambda: update.message.reply_text("ℹ️ TG-Power SaaS Downloader Platform v3.0", reply_markup=admin_keyboard()),
             "❓ Help": lambda: update.message.reply_text("❓ Admin Panel lets you control settings, bots, users, and broadcasts.", reply_markup=admin_keyboard()),
             "🔃 Refresh": lambda: self.show_dashboard(update),
             "🔙 User Panel": lambda: update.message.reply_text("🔙 User Panel active.", reply_markup=main_keyboard(uid, lang)),
@@ -1095,9 +1110,10 @@ class MainSaaSBot:
             )
 
     async def get_managed_bot_token(self, context, service_msg) -> str:
-        token = getattr(service_msg, "token", None)
-        if token:
-            return token
+        if hasattr(service_msg, "token") and service_msg.token:
+            return service_msg.token
+        if hasattr(service_msg, "bot") and hasattr(service_msg.bot, "token") and service_msg.bot.token:
+            return service_msg.bot.token
         return ""
 
     async def handle_callback(self, update, context):
@@ -1114,16 +1130,18 @@ class MainSaaSBot:
             await query.edit_message_text(tr(code, "language_saved"))
             return
 
+        if data.startswith("mybot:"):
+            bid = data.split(":")[1]
+            bot = await db.get_bot(bid)
+            if bot and (bot.get("owner_id") == user_id or is_admin(user_id)):
+                stats = await db.get_bot_stats(bid)
+                await query.edit_message_text(
+                    f"🤖 @{bot.get('username')}\nStatus: {bot.get('status')}\n\n"
+                    f"👥 Users: {stats['total_users']}\n📥 Downloads: {stats['total_downloads']}"
+                )
+            return
+
         if not is_admin(user_id):
-            if data.startswith("mybot:"):
-                bid = data.split(":")[1]
-                bot = await db.get_bot(bid)
-                if bot and bot.get("owner_id") == user_id:
-                    stats = await db.get_bot_stats(bid)
-                    await query.edit_message_text(
-                        f"🤖 @{bot.get('username')}\nStatus: {bot.get('status')}\n\n"
-                        f"👥 Users: {stats['total_users']}\n📥 Downloads: {stats['total_downloads']}"
-                    )
             return
 
         if data == "allbots":
