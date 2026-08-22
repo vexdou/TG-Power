@@ -6,3 +6,4 @@ psutil>=5.9.8
 aiohttp>=3.9.3
 python-dotenv>=1.0.1
 requests>=2.32.0
+pyTelegramBotAPI
