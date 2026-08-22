@@ -1,52 +1,62 @@
+import asyncio
 import re
-from telethon import TelegramClient
-from config import Config
+from pyrogram import Client
+import config
 
+TOKEN_RE = re.compile(r"(\d+:[A-Za-z0-9_-]{20,})")
 
-class BotFatherCreator:
-    def __init__(self):
-        self.session_name = Config.BOTFATHER_SESSION
-        self.api_id = Config.API_ID
-        self.api_hash = Config.API_HASH
+async def create_bot_via_botfather(bot_name: str, bot_username: str):
+    """
+    Creates a bot by automating the BotFather conversation through a
+    user session. This requires API_ID, API_HASH and USER_SESSION.
 
-    async def create_new_bot(self, bot_name: str, bot_username: str) -> dict:
-        async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
-            async with client.conversation("@BotFather", timeout=30) as conv:
-                await conv.send_message("/newbot")
-                response = await conv.get_response()
+    Telegram does not expose bot creation as a normal Bot API method.
+    Therefore this is the only part of the system that uses the user
+    session. Keep USER_SESSION private and never expose it to bot owners.
+    """
+    if not config.ENABLE_BOTFATHER_AUTOMATION:
+        raise RuntimeError("BotFather automation is disabled.")
+    if not config.USER_SESSION:
+        raise RuntimeError("USER_SESSION is required for automatic bot creation.")
 
-                if "Choose a name" not in response.text and "Alright" not in response.text:
-                    await conv.send_message("/cancel")
-                    return {"success": False, "error": f"BotFather Response Error: {response.text}"}
+    bot_name = bot_name.strip()
+    bot_username = bot_username.strip().lstrip("@")
+    if not bot_name or len(bot_name) > 64:
+        raise ValueError("Bot name must be between 1 and 64 characters.")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,30}bot", bot_username, re.I):
+        raise ValueError("Bot username must end with 'bot' and contain only letters, numbers and underscores.")
 
-                await conv.send_message(bot_name)
-                response = await conv.get_response()
+    app = Client(
+        "bot_creator_session",
+        api_id=config.API_ID,
+        api_hash=config.API_HASH,
+        session_string=config.USER_SESSION,
+        in_memory=True,
+        no_updates=True,
+    )
+    await app.start()
+    try:
+        await app.send_message("BotFather", "/newbot")
+        await asyncio.sleep(1.2)
+        await app.send_message("BotFather", bot_name)
+        await asyncio.sleep(1.2)
+        await app.send_message("BotFather", bot_username)
+        await asyncio.sleep(2.0)
 
-                if "Good" not in response.text and "Choose a username" not in response.text:
-                    await conv.send_message("/cancel")
-                    return {"success": False, "error": f"Invalid Name: {response.text}"}
+        message = None
+        async for item in app.get_chat_history("BotFather", limit=3):
+            message = item
+            text = item.text or ""
+            match = TOKEN_RE.search(text)
+            if match:
+                return match.group(1), bot_username
+            if "too many bots" in text.lower():
+                raise RuntimeError("BotFather says this account has reached its bot limit.")
+            if "taken" in text.lower():
+                raise RuntimeError("That bot username is already taken.")
+            if "invalid" in text.lower():
+                raise RuntimeError(f"BotFather rejected the username: {text[:300]}")
 
-                if not bot_username.lower().endswith("bot"):
-                    bot_username += "_bot"
-
-                await conv.send_message(bot_username)
-                response = await conv.get_response()
-
-                if "Done!" in response.text or "Use this token" in response.text:
-                    match = re.search(r"(\d+:[A-Za-z0-9_-]+)", response.text)
-                    if match:
-                        token = match.group(1)
-                        bot_id = int(token.split(":")[0])
-                        return {
-                            "success": True,
-                            "bot_id": bot_id,
-                            "token": token,
-                            "username": bot_username,
-                            "name": bot_name,
-                        }
-
-                await conv.send_message("/cancel")
-                return {"success": False, "error": f"Creation Failed: {response.text}"}
-
-
-bot_creator = BotFatherCreator()
+        raise RuntimeError(f"BotFather did not return a token. Last response: {(message.text if message else '')[:300]}")
+    finally:
+        await app.stop()
