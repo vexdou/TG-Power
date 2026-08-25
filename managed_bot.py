@@ -3,6 +3,7 @@ import logging
 import os
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -120,7 +121,7 @@ LANGUAGES = {
     },
 
     "fr": {
-        "welcome": "👋 Bienvenue !\n\nEnvoyez-moi un lien public.",
+        "welcome": "👋 Bienvenue !",
         "invalid": "❌ Envoyez un lien http/https valide.",
         "downloading": "⏳ Téléchargement en cours...",
         "music_downloading": "🎵 Conversion en MP3...",
@@ -190,7 +191,7 @@ LANGUAGES = {
         "users": "👥 Usuários",
         "downloads": "📥 Downloads",
         "admin_panel": "⚙️ **PAINEL DE ADMINISTRAÇÃO**",
-        "broadcast_prompt": "📢 **MODO TRANSMISSÃO**",
+        "broadcast_prompt": "📢 **MODO TRANSMISÃO**",
         "broadcast_start": "📢 Transmitindo para {count} usuários...",
         "broadcast_success": "✅ Transmissão concluída.\n\n📤 Enviados: {sent}\n❌ Falhas: {failed}",
     },
@@ -630,7 +631,11 @@ class ManagedBotHandler:
             platform = result.get("platform", "general")
             media_type = result.get("media_type", "video")
 
+            # ---------------------------------------------
+            # SHOW CHAT ACTION ("sending a video/photo/audio")
+            # ---------------------------------------------
             if media_type == "audio":
+                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_AUDIO)
                 with open(file_path, "rb") as audio:
                     await update.message.reply_audio(
                         audio=audio,
@@ -640,6 +645,7 @@ class ManagedBotHandler:
                     )
 
             elif media_type == "photo":
+                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_PHOTO)
                 with open(file_path, "rb") as photo:
                     await update.message.reply_photo(
                         photo=photo,
@@ -647,6 +653,7 @@ class ManagedBotHandler:
                     )
 
             else:
+                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_VIDEO)
                 with open(file_path, "rb") as video:
                     await update.message.reply_video(
                         video=video,
@@ -739,6 +746,9 @@ class ManagedBotHandler:
                 await proc.communicate()
 
                 target_file = mp3_path if os.path.exists(mp3_path) else file_path
+
+                # Show status action: "sending a music"
+                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_AUDIO)
 
                 with open(target_file, "rb") as audio:
                     await query.message.reply_audio(
