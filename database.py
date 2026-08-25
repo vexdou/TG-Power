@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import OperationFailure
 
 from config import Config
 
@@ -48,6 +49,224 @@ class Database:
         self._connected = False
 
     # =========================================================
+    # INDEX MANAGEMENT
+    # =========================================================
+
+    async def _ensure_index(
+        self,
+        collection,
+        keys,
+        name,
+        unique=False,
+        sparse=False,
+    ):
+        """
+        Safely create an index.
+
+        MongoDB throws IndexOptionsConflict when an index with
+        the same key pattern already exists under another name.
+
+        Example:
+            existing: user_id_1
+            requested: user_id_unique
+
+        This method detects the existing index and reuses it
+        instead of crashing the application.
+        """
+
+        keys = list(keys)
+
+        try:
+            indexes = await collection.index_information()
+        except Exception:
+            logger.exception(
+                "Could not read MongoDB indexes for %s",
+                collection.name,
+            )
+            raise
+
+        # -----------------------------------------------------
+        # Find an existing index with the same key pattern
+        # -----------------------------------------------------
+        for existing_name, existing_spec in indexes.items():
+            existing_keys = existing_spec.get("key", [])
+
+            if list(existing_keys) != keys:
+                continue
+
+            existing_unique = bool(
+                existing_spec.get("unique", False)
+            )
+
+            existing_sparse = bool(
+                existing_spec.get("sparse", False)
+            )
+
+            # MongoDB automatically creates _id_.
+            # Never try to replace/recreate it.
+            if existing_name == "_id_":
+                return existing_name
+
+            # -------------------------------------------------
+            # Existing index is already compatible
+            # -------------------------------------------------
+            if (
+                (not unique or existing_unique)
+                and (not sparse or existing_sparse)
+            ):
+                logger.info(
+                    "MongoDB index already exists: %s on %s",
+                    existing_name,
+                    collection.name,
+                )
+                return existing_name
+
+            # -------------------------------------------------
+            # Requested unique but existing index is not unique
+            #
+            # Try to upgrade it.
+            # If duplicate data prevents the upgrade, keep the
+            # existing index so the application still starts.
+            # -------------------------------------------------
+            if unique and not existing_unique:
+                logger.warning(
+                    "Existing index %s on %s is not unique. "
+                    "Attempting migration to unique index.",
+                    existing_name,
+                    collection.name,
+                )
+
+                try:
+                    await collection.drop_index(existing_name)
+
+                    try:
+                        created_name = await collection.create_index(
+                            keys,
+                            unique=True,
+                            sparse=sparse,
+                            name=name,
+                        )
+
+                        logger.info(
+                            "MongoDB index migrated: %s on %s",
+                            created_name,
+                            collection.name,
+                        )
+
+                        return created_name
+
+                    except Exception:
+                        logger.exception(
+                            "Could not create unique index %s on %s. "
+                            "Restoring a normal index so the bot "
+                            "can continue running.",
+                            name,
+                            collection.name,
+                        )
+
+                        try:
+                            restored_name = await collection.create_index(
+                                keys,
+                                unique=False,
+                                sparse=existing_sparse,
+                                name=existing_name,
+                            )
+
+                            logger.warning(
+                                "Restored existing non-unique index: %s",
+                                restored_name,
+                            )
+
+                            return restored_name
+
+                        except Exception:
+                            logger.exception(
+                                "Could not restore index %s on %s",
+                                existing_name,
+                                collection.name,
+                            )
+                            raise
+
+                except Exception:
+                    logger.exception(
+                        "Index migration failed for %s on %s",
+                        existing_name,
+                        collection.name,
+                    )
+
+                    # Re-check indexes. Another process may have
+                    # recreated the index while we were working.
+                    try:
+                        indexes_after = (
+                            await collection.index_information()
+                        )
+
+                        for current_name, current_spec in indexes_after.items():
+                            if list(
+                                current_spec.get("key", [])
+                            ) == keys:
+                                return current_name
+
+                    except Exception:
+                        pass
+
+                    raise
+
+        # -----------------------------------------------------
+        # No existing index with this key pattern.
+        # Create it normally.
+        # -----------------------------------------------------
+        try:
+            created_name = await collection.create_index(
+                keys,
+                unique=unique,
+                sparse=sparse,
+                name=name,
+            )
+
+            logger.info(
+                "MongoDB index created: %s on %s",
+                created_name,
+                collection.name,
+            )
+
+            return created_name
+
+        except OperationFailure as exc:
+            # Error 85 = IndexOptionsConflict
+            if getattr(exc, "code", None) == 85:
+                logger.warning(
+                    "IndexOptionsConflict while creating %s on %s. "
+                    "Searching for existing compatible index.",
+                    name,
+                    collection.name,
+                )
+
+                try:
+                    indexes_after = (
+                        await collection.index_information()
+                    )
+
+                    for current_name, current_spec in indexes_after.items():
+                        if list(
+                            current_spec.get("key", [])
+                        ) == keys:
+                            logger.info(
+                                "Using existing MongoDB index %s "
+                                "instead of %s.",
+                                current_name,
+                                name,
+                            )
+                            return current_name
+
+                except Exception:
+                    logger.exception(
+                        "Could not recover from index conflict."
+                    )
+
+            raise
+
+    # =========================================================
     # CONNECTION
     # =========================================================
 
@@ -60,14 +279,15 @@ class Database:
         """
 
         try:
-            # Force an actual connection check.
             await self.client.admin.command("ping")
 
             await self.init_db()
 
             self._connected = True
 
-            logger.info("✅ MongoDB connected successfully")
+            logger.info(
+                "✅ MongoDB connected successfully"
+            )
 
         except Exception:
             self._connected = False
@@ -81,9 +301,6 @@ class Database:
     async def close(self):
         """
         Safely close MongoDB connection.
-
-        main.py calls:
-            await db.close()
         """
 
         try:
@@ -99,59 +316,84 @@ class Database:
                 "Database close error"
             )
 
+    # =========================================================
+    # DATABASE INITIALIZATION
+    # =========================================================
+
     async def init_db(self):
         """
         Create indexes and default platform configuration.
+
+        IMPORTANT:
+        Index creation is handled through _ensure_index()
+        so old MongoDB indexes such as user_id_1 do not cause
+        IndexOptionsConflict errors.
         """
 
+        # -----------------------------------------------------
         # Main users
-        await self.users.create_index(
+        # -----------------------------------------------------
+        await self._ensure_index(
+            self.users,
             [("user_id", ASCENDING)],
-            unique=True,
             name="user_id_unique",
-        )
-
-        # Managed bots
-        await self.bots.create_index(
-            [("bot_id", ASCENDING)],
             unique=True,
-            name="bot_id_unique",
         )
 
-        await self.bots.create_index(
+        # -----------------------------------------------------
+        # Managed bots
+        # -----------------------------------------------------
+        await self._ensure_index(
+            self.bots,
+            [("bot_id", ASCENDING)],
+            name="bot_id_unique",
+            unique=True,
+        )
+
+        await self._ensure_index(
+            self.bots,
             [("owner_id", ASCENDING)],
             name="owner_id_index",
         )
 
-        await self.bots.create_index(
+        await self._ensure_index(
+            self.bots,
             [("username", ASCENDING)],
+            name="username_unique",
             unique=True,
             sparse=True,
-            name="username_unique",
         )
 
-        await self.bots.create_index(
+        await self._ensure_index(
+            self.bots,
             [("status", ASCENDING)],
             name="status_index",
         )
 
+        # -----------------------------------------------------
         # Managed bot users
-        await self.bot_users.create_index(
+        # -----------------------------------------------------
+        await self._ensure_index(
+            self.bot_users,
             [
                 ("bot_id", ASCENDING),
                 ("user_id", ASCENDING),
             ],
-            unique=True,
             name="bot_user_unique",
+            unique=True,
         )
 
-        await self.bot_users.create_index(
+        await self._ensure_index(
+            self.bot_users,
             [("bot_id", ASCENDING)],
             name="bot_users_bot_id",
         )
 
+        # -----------------------------------------------------
         # Downloads
-        await self.downloads.create_index(
+        # -----------------------------------------------------
+        await self._ensure_index(
+            self.downloads,
             [
                 ("bot_id", ASCENDING),
                 ("timestamp", DESCENDING),
@@ -159,25 +401,31 @@ class Database:
             name="downloads_bot_timestamp",
         )
 
-        await self.downloads.create_index(
+        await self._ensure_index(
+            self.downloads,
             [("user_id", ASCENDING)],
             name="downloads_user_id",
         )
 
+        # -----------------------------------------------------
         # Settings
-        await self.settings.create_index(
-            [("_id", ASCENDING)],
-            unique=True,
-            name="settings_id",
-        )
+        #
+        # DO NOT create another _id index.
+        # MongoDB automatically provides _id_.
+        # -----------------------------------------------------
 
+        # -----------------------------------------------------
         # Pending downloads
-        await self.pending_downloads.create_index(
+        # -----------------------------------------------------
+        await self._ensure_index(
+            self.pending_downloads,
             [("created_at", DESCENDING)],
             name="pending_created_at",
         )
 
+        # -----------------------------------------------------
         # Default configuration
+        # -----------------------------------------------------
         existing = await self.settings.find_one(
             {"_id": "platform_config"}
         )
@@ -191,23 +439,36 @@ class Database:
                     "bot_creation_enabled": True,
                     "max_video_seconds": 600,
                     "max_file_mb": 50,
-                    "created_at": datetime.now(timezone.utc),
+                    "created_at": datetime.now(
+                        timezone.utc
+                    ),
                 }
             )
         else:
-            # Add missing settings without overwriting
-            # existing admin configuration.
-            await self.settings.update_one(
-                {"_id": "platform_config"},
-                {
-                    "$setOnInsert": {
-                        "force_join_channels": [],
-                        "maintenance_mode": False,
-                        "bot_creation_enabled": True,
-                    }
-                },
-                upsert=True,
-            )
+            # Make sure missing configuration values exist
+            # without overwriting existing admin settings.
+            updates = {}
+
+            if "force_join_channels" not in existing:
+                updates["force_join_channels"] = []
+
+            if "maintenance_mode" not in existing:
+                updates["maintenance_mode"] = False
+
+            if "bot_creation_enabled" not in existing:
+                updates["bot_creation_enabled"] = True
+
+            if "max_video_seconds" not in existing:
+                updates["max_video_seconds"] = 600
+
+            if "max_file_mb" not in existing:
+                updates["max_file_mb"] = 50
+
+            if updates:
+                await self.settings.update_one(
+                    {"_id": "platform_config"},
+                    {"$set": updates},
+                )
 
     # =========================================================
     # MAIN BOT USERS
@@ -220,7 +481,6 @@ class Database:
         full_name: str = "",
     ):
         user_id = int(user_id)
-
         now = datetime.now(timezone.utc)
 
         await self.users.update_one(
@@ -315,7 +575,10 @@ class Database:
         )
 
         return bool(
-            user and user.get("is_banned", False)
+            user and user.get(
+                "is_banned",
+                False,
+            )
         )
 
     async def set_main_user_banned(
@@ -348,9 +611,6 @@ class Database:
     ):
         """
         Save/update a managed bot.
-
-        This is the method main_bot.py uses after
-        Telegram creates a managed bot.
         """
 
         bot_id = int(bot_id)
@@ -369,7 +629,10 @@ class Database:
         )
 
         status = (
-            existing.get("status", "starting")
+            existing.get(
+                "status",
+                "starting",
+            )
             if existing
             else "starting"
         )
@@ -426,7 +689,10 @@ class Database:
         cursor = (
             self.bots
             .find({"owner_id": int(owner_id)})
-            .sort("created_at", DESCENDING)
+            .sort(
+                "created_at",
+                DESCENDING,
+            )
         )
 
         return await cursor.to_list(
@@ -435,11 +701,13 @@ class Database:
 
     async def get_all_bots(self):
 
-        cursor = self.bots.find(
-            {}
-        ).sort(
-            "created_at",
-            DESCENDING,
+        cursor = (
+            self.bots
+            .find({})
+            .sort(
+                "created_at",
+                DESCENDING,
+            )
         )
 
         return await cursor.to_list(
