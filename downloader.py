@@ -64,12 +64,12 @@ class MediaDownloader:
             "Chrome/136.0.0.0 Safari/537.36"
         )
 
-    def _base_opts(self, out_template: str) -> dict:
+    def _base_opts(self, out_template: str, platform: str = "general") -> dict:
         opts = {
             "outtmpl": out_template,
             "quiet": True,
             "no_warnings": True,
-            "noplaylist": True,
+            "noplaylist": platform == "youtube",  # YouTube kaliya ayaan ku xireynaa noplaylist
             "restrictfilenames": True,
             "retries": 3,
             "fragment_retries": 3,
@@ -84,7 +84,6 @@ class MediaDownloader:
             "concurrent_fragment_downloads": 4,
         }
 
-        # Newer yt-dlp YouTube extraction can use Deno + remote EJS scripts.
         if shutil.which("deno"):
             opts["js_runtimes"] = {"deno": {}}
             opts["remote_components"] = ["ejs:github"]
@@ -122,9 +121,6 @@ class MediaDownloader:
         if os.getenv("YOUTUBE_PO_TOKEN", "").strip():
             variants.append(dict(common))
 
-        # These are intentionally tried separately. YouTube changes which
-        # clients are accepted on cloud IPs, so one client failing does not
-        # immediately fail the whole download.
         for client in ("tv", "web_embedded", "android_vr", "ios", "mweb", "web_creator"):
             candidate = dict(common)
             args = dict(candidate.get("extractor_args", {}))
@@ -163,10 +159,11 @@ class MediaDownloader:
             pool = premium_executor if premium else executor
             real_url = await loop.run_in_executor(pool, lambda: self.expand_url(url))
             platform = self.extract_platform(real_url)
-            out_template = str(self.download_dir / f"{user_id}_%(id)s.%(ext)s")
-            base = self._base_opts(out_template)
+            out_template = str(self.download_dir / f"{user_id}_%(id)s_%(playlist_index)s.%(ext)s")
+            
+            base = self._base_opts(out_template, platform=platform)
             base.update({
-                "format": "bv*+ba/best",
+                "format": "bv*+ba/b/best",  # Waxay taageeraysaa sawirrada iyo muuqaallada
                 "merge_output_format": "mp4",
             })
             if platform == "youtube":
@@ -176,7 +173,8 @@ class MediaDownloader:
             return {
                 "success": True,
                 "file_path": result["file_path"],
-                "title": result.get("title", "Downloaded Video"),
+                "file_paths": result.get("file_paths", [result["file_path"]]),
+                "title": result.get("title", "Downloaded Media"),
                 "platform": platform,
                 "media_type": result.get("media_type", "video"),
             }
@@ -199,7 +197,7 @@ class MediaDownloader:
             real_url = await loop.run_in_executor(pool, lambda: self.expand_url(url))
             platform = self.extract_platform(real_url)
             out_template = str(self.download_dir / f"audio_{user_id}_%(id)s.%(ext)s")
-            base = self._base_opts(out_template)
+            base = self._base_opts(out_template, platform=platform)
             base.update({
                 "format": "bestaudio/best",
                 "postprocessors": [{
@@ -215,6 +213,7 @@ class MediaDownloader:
             return {
                 "success": True,
                 "file_path": result["file_path"],
+                "file_paths": result.get("file_paths", [result["file_path"]]),
                 "title": result.get("title", "Music"),
                 "platform": platform,
                 "media_type": "audio",
@@ -246,10 +245,8 @@ class MediaDownloader:
             or "HTTP Error 403" in last
         ):
             raise RuntimeError(
-                "YouTube is blocking this Render/cloud IP. "
-                "The downloader now tries multiple YouTube clients and Deno/EJS automatically. "
-                "If YouTube still blocks the server, add a valid YOUTUBE_COOKIES_BASE64 or "
-                "YOUTUBE_PO_TOKEN secret in Render."
+                "YouTube is blocking this cloud IP. "
+                "Please add a valid YOUTUBE_COOKIES_BASE64 or YOUTUBE_PO_TOKEN."
             )
         raise RuntimeError(self._clean_error(last))
 
@@ -266,41 +263,63 @@ class MediaDownloader:
             info = ydl.extract_info(url, download=True)
             if not info:
                 raise RuntimeError("yt-dlp did not return media information.")
+
+            entries = []
             if "entries" in info:
-                entries = info.get("entries") or []
-                if not entries:
-                    raise RuntimeError("No media was found.")
-                info = entries[0]
+                entries = [e for e in (info.get("entries") or []) if e]
+            else:
+                entries = [info]
 
-            filename = ydl.prepare_filename(info)
-            if not os.path.exists(filename):
-                base, _ = os.path.splitext(filename)
-                for ext in (".mp4", ".mkv", ".webm", ".m4a", ".mp3", ".ogg", ".mov", ".jpg", ".jpeg", ".png", ".webp"):
-                    candidate = base + ext
-                    if os.path.exists(candidate):
-                        filename = candidate
-                        break
+            if not entries:
+                raise RuntimeError("No media was found.")
 
-            if not os.path.exists(filename):
-                media_id = info.get("id")
-                if media_id:
-                    candidates = list(self.download_dir.glob(f"*{media_id}*"))
-                    if candidates:
-                        filename = str(max(candidates, key=lambda p: p.stat().st_mtime))
+            file_paths = []
+            media_types = []
+            title = info.get("title") or entries[0].get("title") or "Media"
 
-            if not os.path.exists(filename):
+            for entry in entries:
+                filename = ydl.prepare_filename(entry)
+                if not os.path.exists(filename):
+                    base, _ = os.path.splitext(filename)
+                    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".mkv", ".webm", ".mp3", ".m4a"):
+                        candidate = base + ext
+                        if os.path.exists(candidate):
+                            filename = candidate
+                            break
+
+                if not os.path.exists(filename):
+                    media_id = entry.get("id")
+                    if media_id:
+                        candidates = list(self.download_dir.glob(f"*{media_id}*"))
+                        if candidates:
+                            filename = str(max(candidates, key=lambda p: p.stat().st_mtime))
+
+                if os.path.exists(filename):
+                    lower = filename.lower()
+                    if lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+                        m_type = "photo"
+                    elif entry.get("vcodec") == "none" or lower.endswith((".mp3", ".m4a", ".ogg", ".wav")):
+                        m_type = "audio"
+                    else:
+                        m_type = "video"
+
+                    file_paths.append(filename)
+                    media_types.append(m_type)
+
+            if not file_paths:
                 raise FileNotFoundError("The media was downloaded but the output file was not found.")
 
-            lower = filename.lower()
-            if lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            if all(t == "photo" for t in media_types):
                 media_type = "photo"
-            elif info.get("vcodec") == "none" or lower.endswith(".mp3"):
+            elif all(t == "audio" for t in media_types):
                 media_type = "audio"
             else:
                 media_type = "video"
+
             return {
-                "file_path": filename,
-                "title": info.get("title", "Media"),
+                "file_path": file_paths[0],
+                "file_paths": file_paths,
+                "title": title,
                 "media_type": media_type,
             }
 
@@ -313,9 +332,13 @@ class MediaDownloader:
         return error
 
     @staticmethod
-    def cleanup(file_path: str):
+    def cleanup(file_path):
         try:
-            if file_path and os.path.exists(file_path):
+            if isinstance(file_path, (list, set, tuple)):
+                for path in file_path:
+                    if path and os.path.exists(path):
+                        os.remove(path)
+            elif file_path and os.path.exists(file_path):
                 os.remove(file_path)
         except Exception:
             logger.exception("Cleanup error")
