@@ -33,7 +33,8 @@ class DynamicBotManager:
                 )
             )
 
-    async def start_bot_instance(self, bot_id: int, token: str) -> bool:
+    async def start_bot_instance(self, bot_id: int | str, token: str) -> bool:
+        bot_id = int(bot_id)
         async with self._get_lock(bot_id):
             if bot_id in self.running_bots:
                 handler = self.running_bots[bot_id]
@@ -47,19 +48,15 @@ class DynamicBotManager:
 
                 handler = ManagedBotHandler(bot_id, token)
 
-                # Initialize PTB application.
                 await handler.app.initialize()
 
-                # Verify token before registering the bot as online.
                 bot_me = await handler.app.bot.get_me()
                 username = bot_me.username or str(bot_id)
 
-                # A bot must not keep an old webhook while polling.
                 await handler.app.bot.delete_webhook(
                     drop_pending_updates=True
                 )
 
-                # Start the application and updater.
                 await handler.app.start()
 
                 if not handler.app.updater:
@@ -110,7 +107,8 @@ class DynamicBotManager:
 
                 return False
 
-    async def stop_bot_instance(self, bot_id: int):
+    async def stop_bot_instance(self, bot_id: int | str):
+        bot_id = int(bot_id)
         async with self._get_lock(bot_id):
             handler = self.running_bots.pop(bot_id, None)
 
@@ -136,7 +134,8 @@ class DynamicBotManager:
                     bot_id,
                 )
 
-    async def restart_bot_instance(self, bot_id: int) -> bool:
+    async def restart_bot_instance(self, bot_id: int | str) -> bool:
+        bot_id = int(bot_id)
         bot = await db.get_bot(bot_id)
 
         if not bot or not bot.get("token"):
@@ -145,7 +144,7 @@ class DynamicBotManager:
         await self.stop_bot_instance(bot_id)
 
         return await self.start_bot_instance(
-            int(bot["bot_id"]),
+            bot_id,
             bot["token"],
         )
 
