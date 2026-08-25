@@ -2,11 +2,7 @@ import asyncio
 import logging
 import os
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -23,6 +19,10 @@ from downloader import downloader
 logger = logging.getLogger(__name__)
 
 
+# =========================================================
+# LANGUAGES
+# =========================================================
+
 LANGUAGES = {
     "en": {
         "welcome": (
@@ -38,22 +38,35 @@ LANGUAGES = {
         "music_ready": "🎵 MUSIC mode enabled.\n\nSend me a video/media link and I will convert it to MP3.",
         "video_ready": "🎬 VIDEO mode enabled.\n\nSend me a video/media link.",
         "language_changed": "✅ Language changed.",
+        "select_language": "🌐 Select your language:",
+        "stats": "📊 BOT OWNER STATS",
+        "users": "👥 Users",
+        "downloads": "📥 Downloads",
     },
+
     "so": {
         "welcome": (
             "👋 Soo dhawoow!\n\n"
             "Ii soo dir link public ah oo ka socda:\n"
             "YouTube, TikTok, Instagram, Facebook, "
-            "X/Twitter, Pinterest ama Snapchat."
+            "X/Twitter, Pinterest ama Snapchat.\n\n"
+            "🎬 Video: link-ga soo dir si aad video u hesho.\n"
+            "🎵 Music: marka video-ga la soo diro kadib "
+            "button-ka MUSIC 🎵 ayaa kuu soo bixi doona."
         ),
         "invalid": "❌ Fadlan soo dir link http/https sax ah.",
-        "downloading": "⏳ Media-ga ayaa la soo dejinayaa... Fadlan sug.",
+        "downloading": "⏳ Video-ga ayaa la soo dejinayaa... Fadlan sug.",
         "music_downloading": "🎵 Music-ga ayaa la soo dejinayaa oo MP3 loo badalayaa... Fadlan sug.",
         "error": "❌ Cilad:",
-        "music_ready": "🎵 MUSIC mode waa la shiday.\n\nIi soo dir link video/media ah, waxaan kuu badalayaa MP3.",
-        "video_ready": "🎬 VIDEO mode waa la shiday.\n\nIi soo dir link video/media ah.",
+        "music_ready": "🎵 MUSIC-ga waa diyaar.\n\nHadda video-ga la soo diray MP3 ayaan kuu badalayaa.",
+        "video_ready": "🎬 VIDEO-ga waa diyaar.\n\nIi soo dir link video/media ah.",
         "language_changed": "✅ Luqadda waa la beddelay.",
+        "select_language": "🌐 Dooro luuqadda:",
+        "stats": "📊 XOGTA BOTKA",
+        "users": "👥 Users",
+        "downloads": "📥 Downloads",
     },
+
     "ar": {
         "welcome": (
             "👋 أهلاً بك!\n\n"
@@ -68,7 +81,12 @@ LANGUAGES = {
         "music_ready": "🎵 تم تفعيل وضع MUSIC.\n\nأرسل رابط فيديو لتحويله إلى MP3.",
         "video_ready": "🎬 تم تفعيل وضع VIDEO.\n\nأرسل رابط فيديو.",
         "language_changed": "✅ تم تغيير اللغة.",
+        "select_language": "🌐 اختر لغتك:",
+        "stats": "📊 إحصائيات البوت",
+        "users": "👥 المستخدمون",
+        "downloads": "📥 التنزيلات",
     },
+
     "es": {
         "welcome": (
             "👋 ¡Bienvenido!\n\n"
@@ -80,10 +98,15 @@ LANGUAGES = {
         "downloading": "⏳ Descargando... Por favor espera.",
         "music_downloading": "🎵 Descargando y convirtiendo a MP3... Por favor espera.",
         "error": "❌ Error:",
-        "music_ready": "🎵 Modo MUSIC activado.\n\nEnvíame un enlace de video y lo convertiré a MP3.",
+        "music_ready": "🎵 Modo MUSIC activado.\n\nEnvíame un video para convertirlo a MP3.",
         "video_ready": "🎬 Modo VIDEO activado.\n\nEnvíame un enlace de video.",
         "language_changed": "✅ Idioma cambiado.",
+        "select_language": "🌐 Selecciona tu idioma:",
+        "stats": "📊 ESTADÍSTICAS DEL BOT",
+        "users": "👥 Usuarios",
+        "downloads": "📥 Descargas",
     },
+
     "fr": {
         "welcome": (
             "👋 Bienvenue !\n\n"
@@ -98,7 +121,12 @@ LANGUAGES = {
         "music_ready": "🎵 Mode MUSIC activé.\n\nEnvoyez un lien vidéo pour le convertir en MP3.",
         "video_ready": "🎬 Mode VIDEO activé.\n\nEnvoyez un lien vidéo.",
         "language_changed": "✅ Langue modifiée.",
+        "select_language": "🌐 Sélectionnez votre langue :",
+        "stats": "📊 STATISTIQUES DU BOT",
+        "users": "👥 Utilisateurs",
+        "downloads": "📥 Téléchargements",
     },
+
     "tr": {
         "welcome": (
             "👋 Hoş geldiniz!\n\n"
@@ -112,9 +140,78 @@ LANGUAGES = {
         "music_ready": "🎵 MUSIC modu etkinleştirildi.\n\nMP3'e dönüştürmek için video bağlantısı gönderin.",
         "video_ready": "🎬 VIDEO modu etkinleştirildi.\n\nVideo bağlantısı gönderin.",
         "language_changed": "✅ Dil değiştirildi.",
+        "select_language": "🌐 Dilinizi seçin:",
+        "stats": "📊 BOT İSTATİSTİKLERİ",
+        "users": "👥 Kullanıcılar",
+        "downloads": "📥 İndirmeler",
+    },
+
+    # Extra languages
+    "de": {
+        "welcome": "👋 Willkommen!\n\nSende mir einen öffentlichen Video-/Medienlink.",
+        "invalid": "❌ Bitte sende einen gültigen http/https-Link.",
+        "downloading": "⏳ Medien werden heruntergeladen...",
+        "music_downloading": "🎵 Audio wird heruntergeladen und in MP3 konvertiert...",
+        "error": "❌ Fehler:",
+        "music_ready": "🎵 MUSIC-Modus aktiviert.",
+        "video_ready": "🎬 VIDEO-Modus aktiviert.",
+        "language_changed": "✅ Sprache geändert.",
+        "select_language": "🌐 Sprache auswählen:",
+        "stats": "📊 BOT-STATISTIKEN",
+        "users": "👥 Benutzer",
+        "downloads": "📥 Downloads",
+    },
+
+    "pt": {
+        "welcome": "👋 Bem-vindo!\n\nEnvie um link público de vídeo/mídia.",
+        "invalid": "❌ Envie um link http/https válido.",
+        "downloading": "⏳ Baixando mídia...",
+        "music_downloading": "🎵 Baixando e convertendo para MP3...",
+        "error": "❌ Erro:",
+        "music_ready": "🎵 Modo MUSIC ativado.",
+        "video_ready": "🎬 Modo VIDEO ativado.",
+        "language_changed": "✅ Idioma alterado.",
+        "select_language": "🌐 Selecione seu idioma:",
+        "stats": "📊 ESTATÍSTICAS DO BOT",
+        "users": "👥 Usuários",
+        "downloads": "📥 Downloads",
+    },
+
+    "hi": {
+        "welcome": "👋 स्वागत है!\n\nYouTube, TikTok, Instagram आदि का सार्वजनिक लिंक भेजें।",
+        "invalid": "❌ कृपया सही http/https लिंक भेजें।",
+        "downloading": "⏳ मीडिया डाउनलोड हो रहा है...",
+        "music_downloading": "🎵 ऑडियो डाउनलोड करके MP3 में बदला जा रहा है...",
+        "error": "❌ त्रुटि:",
+        "music_ready": "🎵 MUSIC मोड सक्रिय है।",
+        "video_ready": "🎬 VIDEO मोड सक्रिय है।",
+        "language_changed": "✅ भाषा बदल दी गई।",
+        "select_language": "🌐 अपनी भाषा चुनें:",
+        "stats": "📊 BOT आँकड़े",
+        "users": "👥 उपयोगकर्ता",
+        "downloads": "📥 डाउनलोड",
+    },
+
+    "id": {
+        "welcome": "👋 Selamat datang!\n\nKirim tautan video/media publik.",
+        "invalid": "❌ Kirim tautan http/https yang valid.",
+        "downloading": "⏳ Media sedang diunduh...",
+        "music_downloading": "🎵 Audio sedang diunduh dan dikonversi ke MP3...",
+        "error": "❌ Kesalahan:",
+        "music_ready": "🎵 Mode MUSIC aktif.",
+        "video_ready": "🎬 Mode VIDEO aktif.",
+        "language_changed": "✅ Bahasa berhasil diubah.",
+        "select_language": "🌐 Pilih bahasa:",
+        "stats": "📊 STATISTIK BOT",
+        "users": "👥 Pengguna",
+        "downloads": "📥 Unduhan",
     },
 }
 
+
+# =========================================================
+# MANAGED BOT
+# =========================================================
 
 class ManagedBotHandler:
 
@@ -131,99 +228,108 @@ class ManagedBotHandler:
 
         self._setup_handlers()
 
-    # =========================================================
-    # KEYBOARD
-    # =========================================================
+    # =====================================================
+    # KEYBOARDS
+    # =====================================================
 
-    def main_keyboard(self):
-        return InlineKeyboardMarkup(
+    def main_keyboard(self, is_owner=False):
+        rows = [
             [
-                [
-                    InlineKeyboardButton(
-                        "🎬 VIDEO",
-                        callback_data="mode_video",
-                    ),
-                    InlineKeyboardButton(
-                        "🎵 MUSIC",
-                        callback_data="mode_music",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🌐 LANGUAGE",
-                        callback_data="show_languages",
-                    ),
-                ],
+                InlineKeyboardButton(
+                    "🌐 LANGUAGE",
+                    callback_data="show_languages",
+                )
             ]
-        )
+        ]
+
+        if is_owner:
+            rows.append([
+                InlineKeyboardButton(
+                    "📢 BROADCAST",
+                    callback_data="owner_broadcast",
+                ),
+                InlineKeyboardButton(
+                    "📊 STATS",
+                    callback_data="owner_stats",
+                ),
+            ])
+
+        return InlineKeyboardMarkup(rows)
+
+    def video_music_keyboard(self, is_owner=False):
+        rows = [
+            [
+                InlineKeyboardButton(
+                    "🎵 MUSIC",
+                    callback_data="convert_music",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🌐 LANGUAGE",
+                    callback_data="show_languages",
+                )
+            ],
+        ]
+
+        if is_owner:
+            rows.append([
+                InlineKeyboardButton(
+                    "📢 BROADCAST",
+                    callback_data="owner_broadcast",
+                ),
+                InlineKeyboardButton(
+                    "📊 STATS",
+                    callback_data="owner_stats",
+                ),
+            ])
+
+        return InlineKeyboardMarkup(rows)
 
     def language_keyboard(self):
-        return InlineKeyboardMarkup(
+        return InlineKeyboardMarkup([
             [
-                [
-                    InlineKeyboardButton(
-                        "English 🇬🇧",
-                        callback_data="msetlang_en",
-                    ),
-                    InlineKeyboardButton(
-                        "Soomaali 🇸🇴",
-                        callback_data="msetlang_so",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "العربية 🇸🇦",
-                        callback_data="msetlang_ar",
-                    ),
-                    InlineKeyboardButton(
-                        "Español 🇪🇸",
-                        callback_data="msetlang_es",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "Français 🇫🇷",
-                        callback_data="msetlang_fr",
-                    ),
-                    InlineKeyboardButton(
-                        "Türkçe 🇹🇷",
-                        callback_data="msetlang_tr",
-                    ),
-                ],
-            ]
-        )
+                InlineKeyboardButton("English 🇬🇧", callback_data="msetlang_en"),
+                InlineKeyboardButton("Soomaali 🇸🇴", callback_data="msetlang_so"),
+            ],
+            [
+                InlineKeyboardButton("العربية 🇸🇦", callback_data="msetlang_ar"),
+                InlineKeyboardButton("Español 🇪🇸", callback_data="msetlang_es"),
+            ],
+            [
+                InlineKeyboardButton("Français 🇫🇷", callback_data="msetlang_fr"),
+                InlineKeyboardButton("Türkçe 🇹🇷", callback_data="msetlang_tr"),
+            ],
+            [
+                InlineKeyboardButton("Deutsch 🇩🇪", callback_data="msetlang_de"),
+                InlineKeyboardButton("Português 🇵🇹", callback_data="msetlang_pt"),
+            ],
+            [
+                InlineKeyboardButton("हिन्दी 🇮🇳", callback_data="msetlang_hi"),
+                InlineKeyboardButton("Bahasa 🇮🇩", callback_data="msetlang_id"),
+            ],
+        ])
 
-    # =========================================================
+    # =====================================================
     # HANDLERS
-    # =========================================================
+    # =====================================================
 
     def _setup_handlers(self):
 
         self.app.add_handler(
-            CommandHandler(
-                "start",
-                self.start_command,
-            )
+            CommandHandler("start", self.start_command)
         )
 
         self.app.add_handler(
-            CommandHandler(
-                "stats",
-                self.stats_command,
-            )
+            CommandHandler("stats", self.stats_command)
         )
 
         self.app.add_handler(
-            CommandHandler(
-                "broadcast",
-                self.broadcast_command,
-            )
+            CommandHandler("broadcast", self.broadcast_command)
         )
 
         self.app.add_handler(
-            CallbackQueryHandler(
-                self.handle_callbacks,
-            )
+            CallbackQueryHandler(self.handle_callbacks)
         )
 
         self.app.add_handler(
@@ -233,76 +339,128 @@ class ManagedBotHandler:
             )
         )
 
-        self.app.add_error_handler(
-            self.error_handler
+        self.app.add_handler(
+            MessageHandler(
+                filters.PHOTO | filters.VIDEO,
+                self.handle_broadcast_media,
+            )
         )
 
-    # =========================================================
+        self.app.add_error_handler(self.error_handler)
+
+    # =====================================================
+    # HELPERS
+    # =====================================================
+
+    async def get_language(self, user_id):
+        try:
+            user = await db.get_bot_user(
+                self.bot_id,
+                user_id,
+            )
+
+            lang = (
+                (user or {}).get("language")
+                or "en"
+            )
+
+            if lang not in LANGUAGES:
+                lang = "en"
+
+            return lang
+
+        except Exception:
+            logger.exception(
+                "Could not get language"
+            )
+            return "en"
+
+    async def is_owner(self, user_id):
+        try:
+            bot_data = await db.get_bot(self.bot_id)
+
+            return bool(
+                bot_data
+                and int(bot_data.get("owner_id", 0))
+                == int(user_id)
+            )
+
+        except Exception:
+            logger.exception(
+                "Could not check bot owner"
+            )
+            return False
+
+    async def owner_keyboard(self, user_id):
+        return self.main_keyboard(
+            await self.is_owner(user_id)
+        )
+
+    # =====================================================
     # START
-    # =========================================================
+    # =====================================================
 
     async def start_command(
         self,
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ):
-        if not update.effective_user or not update.message:
+        if not update.message or not update.effective_user:
             return
 
-        try:
-            user = update.effective_user
+        user = update.effective_user
 
+        try:
             await db.save_bot_user(
                 self.bot_id,
                 user.id,
                 user.username or "",
                 user.full_name or "",
             )
+        except Exception:
+            logger.exception("save_bot_user failed")
 
+        # Check if this is first use
+        bot_user = None
+
+        try:
             bot_user = await db.get_bot_user(
                 self.bot_id,
                 user.id,
             )
-
-            lang = (
-                (bot_user or {}).get(
-                    "language",
-                    "en",
-                )
-                or "en"
-            )
-
-            texts = LANGUAGES.get(
-                lang,
-                LANGUAGES["en"],
-            )
-
-            # Default mode
-            context.user_data["download_mode"] = "video"
-
-            await update.message.reply_text(
-                texts["welcome"],
-                reply_markup=self.main_keyboard(),
-            )
-
         except Exception:
-            logger.exception(
-                "Managed /start error for bot %s",
-                self.bot_id,
+            pass
+
+        language = (
+            (bot_user or {}).get("language")
+            or ""
+        )
+
+        # First start: force language selection
+        if not language:
+            await update.message.reply_text(
+                "🌐 Welcome!\n\n"
+                "Please select your language first:",
+                reply_markup=self.language_keyboard(),
             )
+            return
 
-            try:
-                await update.message.reply_text(
-                    "👋 Welcome!\n\n"
-                    "Send me a public media link.",
-                    reply_markup=self.main_keyboard(),
-                )
-            except Exception:
-                pass
+        language = (
+            language
+            if language in LANGUAGES
+            else "en"
+        )
 
-    # =========================================================
+        texts = LANGUAGES[language]
+
+        await update.message.reply_text(
+            texts["welcome"],
+            reply_markup=await self.owner_keyboard(user.id),
+        )
+
+    # =====================================================
     # MESSAGE / DOWNLOAD
-    # =========================================================
+    # =====================================================
 
     async def handle_message(
         self,
@@ -318,27 +476,18 @@ class ManagedBotHandler:
             update.message.text or ""
         ).strip()
 
-        # -----------------------------------------------------
-        # VALIDATE URL
-        # -----------------------------------------------------
-
         if not (
             url.startswith("http://")
             or url.startswith("https://")
         ):
-            try:
-                await update.message.reply_text(
-                    "❌ Please send a valid http/https media link.",
-                    reply_markup=self.main_keyboard(),
-                )
-            except Exception:
-                pass
+            lang = await self.get_language(user.id)
+            texts = LANGUAGES[lang]
 
+            await update.message.reply_text(
+                texts["invalid"],
+                reply_markup=await self.owner_keyboard(user.id),
+            )
             return
-
-        # -----------------------------------------------------
-        # SAVE USER
-        # -----------------------------------------------------
 
         try:
             await db.save_bot_user(
@@ -348,599 +497,208 @@ class ManagedBotHandler:
                 user.full_name or "",
             )
         except Exception:
-            logger.exception(
-                "Could not save managed bot user: "
-                "bot=%s user=%s",
-                self.bot_id,
-                user.id,
-            )
+            logger.exception("Could not save bot user")
 
-        # -----------------------------------------------------
-        # GET LANGUAGE
-        # -----------------------------------------------------
-
-        lang = "en"
-
-        try:
-            bot_user = await db.get_bot_user(
-                self.bot_id,
-                user.id,
-            )
-
-            lang = (
-                (bot_user or {}).get(
-                    "language",
-                    "en",
-                )
-                or "en"
-            )
-
-        except Exception:
-            logger.exception(
-                "Could not get user language: "
-                "bot=%s user=%s",
-                self.bot_id,
-                user.id,
-            )
-
-        texts = LANGUAGES.get(
-            lang,
-            LANGUAGES["en"],
-        )
-
-        # -----------------------------------------------------
-        # GET MODE
-        # -----------------------------------------------------
-
-        mode = context.user_data.get(
-            "download_mode",
-            "video",
-        )
-
-        if mode not in (
-            "video",
-            "music",
-        ):
-            mode = "video"
+        lang = await self.get_language(user.id)
+        texts = LANGUAGES[lang]
 
         status_msg = None
         file_path = None
 
         try:
-
-            # -------------------------------------------------
-            # STATUS MESSAGE
-            # -------------------------------------------------
-
-            if mode == "music":
-                status_msg = await update.message.reply_text(
-                    texts["music_downloading"]
-                )
-            else:
-                status_msg = await update.message.reply_text(
-                    texts["downloading"]
-                )
+            status_msg = await update.message.reply_text(
+                texts["downloading"]
+            )
 
             logger.info(
-                "Starting managed bot download: "
-                "bot=%s user=%s mode=%s url=%s",
+                "Starting download bot=%s user=%s url=%s",
                 self.bot_id,
                 user.id,
-                mode,
                 url,
             )
 
-            # -------------------------------------------------
-            # MUSIC / MP3
-            # -------------------------------------------------
-
-            if mode == "music":
-
-                result = await downloader.download_audio(
-                    url=url,
-                    user_id=user.id,
-                    premium=False,
-                )
-
-            # -------------------------------------------------
-            # NORMAL VIDEO
-            # -------------------------------------------------
-
-            else:
-
-                result = await downloader.download(
-                    url=url,
-                    user_id=user.id,
-                    premium=False,
-                )
-
-            logger.info(
-                "Downloader result: "
-                "bot=%s user=%s mode=%s success=%s",
-                self.bot_id,
-                user.id,
-                mode,
-                result.get("success"),
+            result = await downloader.download(
+                url=url,
+                user_id=user.id,
+                premium=False,
             )
 
-            # -------------------------------------------------
-            # DOWNLOAD FAILED
-            # -------------------------------------------------
-
             if not result.get("success"):
-
                 error_text = str(
                     result.get(
                         "error",
                         "Unknown download error.",
                     )
+                )[:3000]
+
+                await status_msg.edit_text(
+                    f"{texts['error']}\n\n{error_text}",
+                    reply_markup=await self.owner_keyboard(user.id),
                 )
-
-                logger.error(
-                    "Managed bot download failed: "
-                    "bot=%s user=%s mode=%s error=%s",
-                    self.bot_id,
-                    user.id,
-                    mode,
-                    error_text,
-                )
-
-                error_text = error_text[:3000]
-
-                if status_msg:
-                    try:
-
-                        await status_msg.edit_text(
-                            f"{texts['error']}\n\n"
-                            f"{error_text}",
-                            reply_markup=self.main_keyboard(),
-                        )
-
-                    except Exception:
-                        pass
-
                 return
 
-            # -------------------------------------------------
-            # RESULT
-            # -------------------------------------------------
-
-            file_path = result.get(
-                "file_path"
-            )
-
-            title = (
-                result.get("title")
-                or (
-                    "Music"
-                    if mode == "music"
-                    else "Downloaded Media"
-                )
-            )
-
-            platform = (
-                result.get("platform")
-                or "general"
-            )
-
-            media_type = (
-                result.get("media_type")
-                or (
-                    "audio"
-                    if mode == "music"
-                    else "video"
-                )
-            )
-
-            # Force audio for music mode
-            if mode == "music":
-                media_type = "audio"
-
-            # -------------------------------------------------
-            # FILE PATH CHECK
-            # -------------------------------------------------
+            file_path = result.get("file_path")
 
             if not file_path:
-
-                logger.error(
-                    "Downloader returned success "
-                    "without file path: "
-                    "bot=%s user=%s result=%s",
-                    self.bot_id,
-                    user.id,
-                    result,
+                await status_msg.edit_text(
+                    "❌ Download completed but no output file was produced.",
+                    reply_markup=await self.owner_keyboard(user.id),
                 )
-
-                if status_msg:
-                    try:
-                        await status_msg.edit_text(
-                            "❌ Download completed, "
-                            "but no output file was produced.",
-                            reply_markup=self.main_keyboard(),
-                        )
-                    except Exception:
-                        pass
-
                 return
 
-            # -------------------------------------------------
-            # FILE EXISTS CHECK
-            # -------------------------------------------------
-
-            if not os.path.isfile(
-                file_path
-            ):
-
-                logger.error(
-                    "Downloaded file does not exist: %s",
-                    file_path,
+            if not os.path.isfile(file_path):
+                await status_msg.edit_text(
+                    "❌ The downloaded file could not be found.",
+                    reply_markup=await self.owner_keyboard(user.id),
                 )
-
-                if status_msg:
-                    try:
-                        await status_msg.edit_text(
-                            "❌ The download finished, "
-                            "but the output file could not be found.",
-                            reply_markup=self.main_keyboard(),
-                        )
-                    except Exception:
-                        pass
-
                 return
 
-            # -------------------------------------------------
-            # SEND AUDIO / MP3
-            # -------------------------------------------------
+            title = str(
+                result.get(
+                    "title",
+                    "Downloaded Media",
+                )
+            )
+
+            platform = result.get(
+                "platform",
+                "general",
+            )
+
+            media_type = result.get(
+                "media_type",
+                "video",
+            )
+
+            # ---------------------------------------------
+            # SEND DOWNLOADED MEDIA
+            # ---------------------------------------------
 
             if media_type == "audio":
 
-                logger.info(
-                    "Uploading MP3/audio: "
-                    "bot=%s user=%s file=%s",
-                    self.bot_id,
-                    user.id,
-                    file_path,
-                )
-
                 with open(
                     file_path,
                     "rb",
-                ) as audio_file:
+                ) as audio:
 
                     await update.message.reply_audio(
-                        audio=audio_file,
-                        title=str(title)[:64],
+                        audio=audio,
+                        title=title[:64],
                         performer="TG-Power",
-                        caption=f"🎵 {str(title)[:900]}",
+                        caption=f"🎵 {title[:900]}",
+                        reply_markup=self.video_music_keyboard(
+                            await self.is_owner(user.id)
+                        ),
                     )
-
-            # -------------------------------------------------
-            # SEND PHOTO
-            # -------------------------------------------------
 
             elif media_type == "photo":
 
-                logger.info(
-                    "Uploading photo: "
-                    "bot=%s user=%s file=%s",
-                    self.bot_id,
-                    user.id,
-                    file_path,
-                )
-
                 with open(
                     file_path,
                     "rb",
-                ) as photo_file:
+                ) as photo:
 
                     await update.message.reply_photo(
-                        photo=photo_file,
-                        caption=(
-                            f"✅ {str(title)[:900]}"
+                        photo=photo,
+                        caption=f"✅ {title[:900]}",
+                        reply_markup=self.video_music_keyboard(
+                            await self.is_owner(user.id)
                         ),
                     )
-
-            # -------------------------------------------------
-            # SEND VIDEO
-            # -------------------------------------------------
 
             else:
 
-                logger.info(
-                    "Uploading video: "
-                    "bot=%s user=%s file=%s",
-                    self.bot_id,
-                    user.id,
-                    file_path,
-                )
-
                 with open(
                     file_path,
                     "rb",
-                ) as video_file:
+                ) as video:
 
                     await update.message.reply_video(
-                        video=video_file,
-                        caption=(
-                            f"✅ {str(title)[:900]}"
-                        ),
+                        video=video,
+                        caption=f"✅ {title[:900]}",
                         supports_streaming=True,
+                        reply_markup=self.video_music_keyboard(
+                            await self.is_owner(user.id)
+                        ),
                     )
 
-            # -------------------------------------------------
-            # LOG DOWNLOAD
-            # -------------------------------------------------
-
             try:
-
                 await db.log_download(
                     self.bot_id,
                     user.id,
                     platform,
                     media_type,
                 )
-
             except Exception:
-
                 logger.exception(
-                    "Could not log download: "
-                    "bot=%s user=%s",
-                    self.bot_id,
-                    user.id,
+                    "Could not log download"
                 )
 
-            # -------------------------------------------------
-            # DELETE STATUS
-            # -------------------------------------------------
-
-            if status_msg:
-
-                try:
-                    await status_msg.delete()
-                except Exception:
-                    pass
-
-            # -------------------------------------------------
-            # RESET MODE
-            # -------------------------------------------------
-
-            context.user_data[
-                "download_mode"
-            ] = "video"
-
-            logger.info(
-                "Managed bot download completed: "
-                "bot=%s user=%s mode=%s",
-                self.bot_id,
-                user.id,
-                mode,
-            )
-
-        # =====================================================
-        # ERROR
-        # =====================================================
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
 
         except Exception as exc:
 
             logger.exception(
-                "Managed bot media processing/upload error: "
-                "bot=%s user=%s mode=%s",
-                self.bot_id,
-                user.id,
-                mode,
+                "Managed bot download error"
             )
 
-            error_text = str(
-                exc
-            ).strip()
-
-            if not error_text:
-                error_text = (
-                    "Unknown Telegram upload error."
-                )
-
-            error_text = error_text[:1500]
-
             if status_msg:
-
                 try:
-
                     await status_msg.edit_text(
-                        "❌ Could not send the downloaded media.\n\n"
-                        f"{error_text}",
-                        reply_markup=self.main_keyboard(),
+                        f"❌ Error:\n\n{str(exc)[:1500]}",
+                        reply_markup=await self.owner_keyboard(user.id),
                     )
-
                 except Exception:
                     pass
-
-        # =====================================================
-        # CLEANUP
-        # =====================================================
 
         finally:
 
             if file_path:
-
                 try:
-
-                    downloader.cleanup(
-                        file_path
-                    )
-
+                    downloader.cleanup(file_path)
                 except Exception:
-
                     logger.exception(
-                        "Downloader cleanup failed: %s",
-                        file_path,
+                        "Cleanup failed"
                     )
 
-    # =========================================================
-    # STATS
-    # =========================================================
+    # =====================================================
+    # MUSIC BUTTON
+    # =====================================================
 
-    async def stats_command(
+    async def convert_music(
         self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
+        query,
+        context,
     ):
-        if (
-            not update.message
-            or not update.effective_user
-        ):
-            return
+        """
+        MUSIC button:
+        Telegram callback itself does not contain the original URL.
+        The bot asks the user to send the same URL again.
+        """
 
-        try:
+        user = query.from_user
 
-            bot_data = await db.get_bot(
-                self.bot_id
+        lang = await self.get_language(
+            user.id
+        )
+
+        texts = LANGUAGES[lang]
+
+        context.user_data[
+            "music_next"
+        ] = True
+
+        if query.message:
+            await query.message.reply_text(
+                texts["music_ready"]
             )
 
-            if (
-                not bot_data
-                or bot_data.get("owner_id")
-                != update.effective_user.id
-            ):
-                return
-
-            stats = await db.get_bot_stats(
-                self.bot_id
-            )
-
-            await update.message.reply_text(
-                "📊 BOT OWNER STATS\n\n"
-                f"👥 Users: "
-                f"{stats.get('total_users', 0)}\n"
-                f"📥 Downloads: "
-                f"{stats.get('total_downloads', 0)}",
-                reply_markup=self.main_keyboard(),
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Stats error for bot %s",
-                self.bot_id,
-            )
-
-    # =========================================================
-    # BROADCAST
-    # =========================================================
-
-    async def broadcast_command(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        if (
-            not update.message
-            or not update.effective_user
-        ):
-            return
-
-        try:
-
-            bot_data = await db.get_bot(
-                self.bot_id
-            )
-
-            if (
-                not bot_data
-                or bot_data.get("owner_id")
-                != update.effective_user.id
-            ):
-                return
-
-            if not context.args:
-
-                await update.message.reply_text(
-                    "Usage:\n"
-                    "/broadcast Your message"
-                )
-
-                return
-
-            text = " ".join(
-                context.args
-            ).strip()
-
-            if not text:
-
-                await update.message.reply_text(
-                    "❌ Broadcast message cannot be empty."
-                )
-
-                return
-
-            users = await db.get_all_bot_users(
-                self.bot_id
-            )
-
-            progress = await update.message.reply_text(
-                f"📢 Broadcasting to "
-                f"{len(users)} users..."
-            )
-
-            sent = 0
-            failed = 0
-
-            for bot_user in users:
-
-                try:
-
-                    user_id = bot_user.get(
-                        "user_id"
-                    )
-
-                    if not user_id:
-
-                        failed += 1
-                        continue
-
-                    await self.app.bot.send_message(
-                        chat_id=user_id,
-                        text=text,
-                    )
-
-                    sent += 1
-
-                    await asyncio.sleep(
-                        0.05
-                    )
-
-                except Exception as exc:
-
-                    failed += 1
-
-                    logger.warning(
-                        "Broadcast failed: "
-                        "bot=%s user=%s error=%s",
-                        self.bot_id,
-                        bot_user.get("user_id"),
-                        exc,
-                    )
-
-            try:
-
-                await progress.edit_text(
-                    "✅ Broadcast finished.\n\n"
-                    f"Sent: {sent}\n"
-                    f"Failed: {failed}"
-                )
-
-            except Exception:
-                pass
-
-        except Exception:
-
-            logger.exception(
-                "Broadcast error for bot %s",
-                self.bot_id,
-            )
-
-    # =========================================================
+    # =====================================================
     # CALLBACKS
-    # =========================================================
+    # =====================================================
 
     async def handle_callbacks(
         self,
@@ -953,117 +711,24 @@ class ManagedBotHandler:
             return
 
         try:
-
             await query.answer()
 
             data = query.data or ""
+            user_id = query.from_user.id
 
-            # -------------------------------------------------
-            # MUSIC MODE
-            # -------------------------------------------------
-
-            if data == "mode_music":
-
-                context.user_data[
-                    "download_mode"
-                ] = "music"
-
-                bot_user = None
-
-                try:
-                    bot_user = await db.get_bot_user(
-                        self.bot_id,
-                        query.from_user.id,
-                    )
-                except Exception:
-                    pass
-
-                lang = (
-                    (bot_user or {}).get(
-                        "language",
-                        "en",
-                    )
-                    or "en"
-                )
-
-                texts = LANGUAGES.get(
-                    lang,
-                    LANGUAGES["en"],
-                )
-
-                if query.message:
-
-                    await query.message.reply_text(
-                        texts["music_ready"],
-                        reply_markup=self.main_keyboard(),
-                    )
-
-                return
-
-            # -------------------------------------------------
-            # VIDEO MODE
-            # -------------------------------------------------
-
-            if data == "mode_video":
-
-                context.user_data[
-                    "download_mode"
-                ] = "video"
-
-                bot_user = None
-
-                try:
-                    bot_user = await db.get_bot_user(
-                        self.bot_id,
-                        query.from_user.id,
-                    )
-                except Exception:
-                    pass
-
-                lang = (
-                    (bot_user or {}).get(
-                        "language",
-                        "en",
-                    )
-                    or "en"
-                )
-
-                texts = LANGUAGES.get(
-                    lang,
-                    LANGUAGES["en"],
-                )
-
-                if query.message:
-
-                    await query.message.reply_text(
-                        texts["video_ready"],
-                        reply_markup=self.main_keyboard(),
-                    )
-
-                return
-
-            # -------------------------------------------------
-            # SHOW LANGUAGES
-            # -------------------------------------------------
+            # ---------------------------------------------
+            # LANGUAGE
+            # ---------------------------------------------
 
             if data == "show_languages":
 
-                if query.message:
-
-                    await query.message.reply_text(
-                        "🌐 Select your language:",
-                        reply_markup=self.language_keyboard(),
-                    )
-
+                await query.message.reply_text(
+                    "🌐 Select your language:",
+                    reply_markup=self.language_keyboard(),
+                )
                 return
 
-            # -------------------------------------------------
-            # LANGUAGE
-            # -------------------------------------------------
-
-            if data.startswith(
-                "msetlang_"
-            ):
+            if data.startswith("msetlang_"):
 
                 lang_code = data.split(
                     "_",
@@ -1075,35 +740,81 @@ class ManagedBotHandler:
 
                 await db.set_user_language(
                     self.bot_id,
-                    query.from_user.id,
+                    user_id,
                     lang_code,
                 )
 
-                texts = LANGUAGES[
-                    lang_code
-                ]
+                texts = LANGUAGES[lang_code]
+
+                await query.message.edit_text(
+                    f"{texts['language_changed']}\n\n"
+                    f"{texts['welcome']}",
+                    reply_markup=await self.owner_keyboard(
+                        user_id
+                    ),
+                )
+
+                return
+
+            # ---------------------------------------------
+            # MUSIC
+            # ---------------------------------------------
+
+            if data == "convert_music":
+
+                await self.convert_music(
+                    query,
+                    context,
+                )
+                return
+
+            # ---------------------------------------------
+            # OWNER STATS
+            # ---------------------------------------------
+
+            if data == "owner_stats":
+
+                if not await self.is_owner(user_id):
+                    return
+
+                stats = await db.get_bot_stats(
+                    self.bot_id
+                )
+
+                lang = await self.get_language(
+                    user_id
+                )
+
+                texts = LANGUAGES[lang]
+
+                await query.message.reply_text(
+                    f"{texts['stats']}\n\n"
+                    f"{texts['users']}: "
+                    f"{stats.get('total_users', 0)}\n"
+                    f"{texts['downloads']}: "
+                    f"{stats.get('total_downloads', 0)}"
+                )
+
+                return
+
+            # ---------------------------------------------
+            # OWNER BROADCAST
+            # ---------------------------------------------
+
+            if data == "owner_broadcast":
+
+                if not await self.is_owner(user_id):
+                    return
 
                 context.user_data[
-                    "download_mode"
-                ] = "video"
+                    "broadcast_mode"
+                ] = True
 
-                if query.message:
-
-                    try:
-
-                        await query.message.edit_text(
-                            f"{texts['language_changed']}\n\n"
-                            f"{texts['welcome']}",
-                            reply_markup=self.main_keyboard(),
-                        )
-
-                    except Exception:
-
-                        await query.message.reply_text(
-                            f"{texts['language_changed']}\n\n"
-                            f"{texts['welcome']}",
-                            reply_markup=self.main_keyboard(),
-                        )
+                await query.message.reply_text(
+                    "📢 BROADCAST MODE\n\n"
+                    "Send me a message, photo or video.\n"
+                    "It will be sent to all users of this bot."
+                )
 
                 return
 
@@ -1114,9 +825,192 @@ class ManagedBotHandler:
                 self.bot_id,
             )
 
-    # =========================================================
-    # GLOBAL ERROR HANDLER
-    # =========================================================
+    # =====================================================
+    # STATS COMMAND
+    # =====================================================
+
+    async def stats_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        if not update.message or not update.effective_user:
+            return
+
+        user_id = update.effective_user.id
+
+        if not await self.is_owner(user_id):
+            return
+
+        try:
+
+            stats = await db.get_bot_stats(
+                self.bot_id
+            )
+
+            lang = await self.get_language(
+                user_id
+            )
+
+            texts = LANGUAGES[lang]
+
+            await update.message.reply_text(
+                f"{texts['stats']}\n\n"
+                f"{texts['users']}: "
+                f"{stats.get('total_users', 0)}\n"
+                f"{texts['downloads']}: "
+                f"{stats.get('total_downloads', 0)}",
+                reply_markup=await self.owner_keyboard(
+                    user_id
+                ),
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Stats error"
+            )
+
+    # =====================================================
+    # BROADCAST COMMAND
+    # =====================================================
+
+    async def broadcast_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        if not update.message or not update.effective_user:
+            return
+
+        user_id = update.effective_user.id
+
+        if not await self.is_owner(user_id):
+            return
+
+        context.user_data[
+            "broadcast_mode"
+        ] = True
+
+        await update.message.reply_text(
+            "📢 BROADCAST MODE\n\n"
+            "Send me a message, photo or video.\n"
+            "It will be sent to all users of this bot."
+        )
+
+    # =====================================================
+    # BROADCAST MEDIA / MESSAGE
+    # =====================================================
+
+    async def handle_broadcast_media(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        if not update.message or not update.effective_user:
+            return
+
+        user_id = update.effective_user.id
+
+        if not context.user_data.get(
+            "broadcast_mode"
+        ):
+            return
+
+        if not await self.is_owner(user_id):
+            context.user_data[
+                "broadcast_mode"
+            ] = False
+            return
+
+        users = await db.get_all_bot_users(
+            self.bot_id
+        )
+
+        progress = await update.message.reply_text(
+            f"📢 Broadcasting to {len(users)} users..."
+        )
+
+        sent = 0
+        failed = 0
+
+        for bot_user in users:
+
+            target_id = bot_user.get(
+                "user_id"
+            )
+
+            if not target_id:
+                continue
+
+            try:
+
+                if update.message.text:
+
+                    await self.app.bot.send_message(
+                        chat_id=target_id,
+                        text=update.message.text,
+                    )
+
+                elif update.message.photo:
+
+                    photo = update.message.photo[-1]
+
+                    await self.app.bot.send_photo(
+                        chat_id=target_id,
+                        photo=photo.file_id,
+                        caption=(
+                            update.message.caption
+                            or ""
+                        ),
+                    )
+
+                elif update.message.video:
+
+                    await self.app.bot.send_video(
+                        chat_id=target_id,
+                        video=update.message.video.file_id,
+                        caption=(
+                            update.message.caption
+                            or ""
+                        ),
+                    )
+
+                else:
+                    continue
+
+                sent += 1
+
+                await asyncio.sleep(
+                    0.05
+                )
+
+            except Exception as exc:
+
+                failed += 1
+
+                logger.warning(
+                    "Broadcast failed user=%s error=%s",
+                    target_id,
+                    exc,
+                )
+
+        context.user_data[
+            "broadcast_mode"
+        ] = False
+
+        try:
+            await progress.edit_text(
+                "✅ Broadcast finished.\n\n"
+                f"📤 Sent: {sent}\n"
+                f"❌ Failed: {failed}"
+            )
+        except Exception:
+            pass
+
+    # =====================================================
+    # ERROR HANDLER
+    # =====================================================
 
     async def error_handler(
         self,
@@ -1128,4 +1022,4 @@ class ManagedBotHandler:
             self.bot_id,
             context.error,
             exc_info=context.error,
-                )
+)
