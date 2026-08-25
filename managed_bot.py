@@ -279,6 +279,7 @@ class ManagedBotHandler:
         return ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📢 Broadcast"), KeyboardButton("📊 Stats")],
+                [KeyboardButton("✏️ Edit Start Message"), KeyboardButton("🔲 Edit Buttons")],
                 [KeyboardButton("🔙 Main Menu")]
             ],
             resize_keyboard=True
@@ -562,6 +563,60 @@ class ManagedBotHandler:
                 context.user_data["broadcast_mode"] = False
 
         # ---------------------------------------------
+        # 1.1 ADMIN CUSTOM START EDIT MODE
+        # ---------------------------------------------
+        if context.user_data.get("set_start_mode"):
+            if await self.is_owner(user.id):
+                context.user_data["set_start_mode"] = False
+                try:
+                    # Update settings in DB (Make sure update_bot_premium_settings exists in your db module)
+                    settings = await db.get_bot_premium_settings(self.bot_id) or {}
+                    settings["start_message"] = text
+                    if hasattr(db, "update_bot_premium_settings"):
+                        await db.update_bot_premium_settings(self.bot_id, settings)
+                    await update.message.reply_text(
+                        "✅ Fariinta /start waxaa loo badalay si guul leh!",
+                        reply_markup=self.get_admin_keyboard()
+                    )
+                except Exception as e:
+                    await update.message.reply_text(f"❌ Cilad ayaa dhacday: {e}", reply_markup=self.get_admin_keyboard())
+                return
+            else:
+                context.user_data["set_start_mode"] = False
+
+        # ---------------------------------------------
+        # 1.2 ADMIN CUSTOM BUTTONS EDIT MODE
+        # Format example: Label | https://t.me/... (satarkiiba mid)
+        # ---------------------------------------------
+        if context.user_data.get("set_buttons_mode"):
+            if await self.is_owner(user.id):
+                context.user_data["set_buttons_mode"] = False
+                try:
+                    lines = text.split("\n")
+                    new_buttons = []
+                    for line in lines:
+                        if "|" in line:
+                            parts = line.split("|", 1)
+                            label = parts[0].strip()
+                            url = parts[1].strip()
+                            new_buttons.append({"label": label, "url": url})
+                    
+                    settings = await db.get_bot_premium_settings(self.bot_id) or {}
+                    settings["buttons"] = new_buttons[:10] # Max 10 buttons
+                    if hasattr(db, "update_bot_premium_settings"):
+                        await db.update_bot_premium_settings(self.bot_id, settings)
+                    
+                    await update.message.reply_text(
+                        f"✅ Si guul leh ayaa loo keydiyay {len(new_buttons[:10])} badhamo!",
+                        reply_markup=self.get_admin_keyboard()
+                    )
+                except Exception as e:
+                    await update.message.reply_text(f"❌ Cilad ayaa dhacday: {e}", reply_markup=self.get_admin_keyboard())
+                return
+            else:
+                context.user_data["set_buttons_mode"] = False
+
+        # ---------------------------------------------
         # 2. KEYBOARD BUTTON ACTIONS
         # ---------------------------------------------
         if text in ["🌐 Language", "Language"]:
@@ -599,6 +654,28 @@ class ManagedBotHandler:
                 await update.message.reply_text(
                     texts.get("broadcast_prompt", "📢 **BROADCAST MODE**"),
                     parse_mode="Markdown",
+                )
+                return
+
+        if text in ["✏️ Edit Start Message"]:
+            if await self.is_owner(user.id):
+                context.user_data["set_start_mode"] = True
+                await update.message.reply_text(
+                    "✏️ **Fadlan soo dir qoraalka cusub ee aad rabto inuu noqdo Fariinta /start:**\n\n"
+                    "(Waxaad isticmaali kartaa Emoji ama qaabeynta Markdown).",
+                    parse_channel_username=True
+                )
+                return
+
+        if text in ["🔲 Edit Buttons"]:
+            if await self.is_owner(user.id):
+                context.user_data["set_buttons_mode"] = True
+                await update.message.reply_text(
+                    "🔲 **Fadlan soo dir badhamadaada adoo raacinaya qaabkan (Line walba hal button):**\n\n"
+                    "Magaca Button-ka | https://t.me/linkgaaga\n"
+                    "Channel-keena | https://t.me/ChannelName\n"
+                    "Group-ka | https://t.me/GroupName\n\n"
+                    "(Ilaa 10 badhamo ayaad gelin kartaa).",
                 )
                 return
 
