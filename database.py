@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 class Database:
     """
     MongoDB database layer for TG-Power.
+    Supports: Main users, Managed bots, Bot users, Downloads, Premium System, Global settings.
     """
 
     def __init__(self):
@@ -42,7 +43,14 @@ class Database:
     # INDEX MANAGEMENT
     # =========================================================
 
-    async def _ensure_index(self, collection, keys, name, unique=False, sparse=False):
+    async def _ensure_index(
+        self,
+        collection,
+        keys,
+        name,
+        unique=False,
+        sparse=False,
+    ):
         keys = list(keys)
         try:
             indexes = await collection.index_information()
@@ -66,15 +74,19 @@ class Database:
                 return existing_name
 
             if unique and not existing_unique:
+                logger.warning("Existing index %s on %s is not unique. Attempting migration.", existing_name, collection.name)
                 try:
                     await collection.drop_index(existing_name)
                     try:
                         created_name = await collection.create_index(keys, unique=True, sparse=sparse, name=name)
+                        logger.info("MongoDB index migrated: %s on %s", created_name, collection.name)
                         return created_name
                     except Exception:
+                        logger.exception("Could not create unique index %s on %s. Restoring normal index.", name, collection.name)
                         restored_name = await collection.create_index(keys, unique=False, sparse=existing_sparse, name=existing_name)
                         return restored_name
                 except Exception:
+                    logger.exception("Index migration failed for %s on %s", existing_name, collection.name)
                     try:
                         indexes_after = await collection.index_information()
                         for current_name, current_spec in indexes_after.items():
@@ -86,13 +98,16 @@ class Database:
 
         try:
             created_name = await collection.create_index(keys, unique=unique, sparse=sparse, name=name)
+            logger.info("MongoDB index created: %s on %s", created_name, collection.name)
             return created_name
         except OperationFailure as exc:
             if getattr(exc, "code", None) == 85:
+                logger.warning("IndexOptionsConflict while creating %s on %s.", name, collection.name)
                 try:
                     indexes_after = await collection.index_information()
                     for current_name, current_spec in indexes_after.items():
                         if list(current_spec.get("key", [])) == keys:
+                            logger.info("Using existing MongoDB index %s instead of %s.", current_name, name)
                             return current_name
                 except Exception:
                     logger.exception("Could not recover from index conflict.")
@@ -122,17 +137,28 @@ class Database:
             logger.exception("Database close error")
 
     async def init_db(self):
+        # Users
         await self._ensure_index(self.users, [("user_id", ASCENDING)], name="user_id_unique", unique=True)
+
+        # Bots
         await self._ensure_index(self.bots, [("bot_id", ASCENDING)], name="bot_id_unique", unique=True)
         await self._ensure_index(self.bots, [("owner_id", ASCENDING)], name="owner_id_index")
         await self._ensure_index(self.bots, [("username", ASCENDING)], name="username_unique", unique=True, sparse=True)
         await self._ensure_index(self.bots, [("status", ASCENDING)], name="status_index")
+        await self._ensure_index(self.bots, [("premium.until", ASCENDING)], name="premium_until_index")
+
+        # Bot Users
         await self._ensure_index(self.bot_users, [("bot_id", ASCENDING), ("user_id", ASCENDING)], name="bot_user_unique", unique=True)
         await self._ensure_index(self.bot_users, [("bot_id", ASCENDING)], name="bot_users_bot_id")
+
+        # Downloads
         await self._ensure_index(self.downloads, [("bot_id", ASCENDING), ("timestamp", DESCENDING)], name="downloads_bot_timestamp")
         await self._ensure_index(self.downloads, [("user_id", ASCENDING)], name="downloads_user_id")
+
+        # Pending downloads
         await self._ensure_index(self.pending_downloads, [("created_at", DESCENDING)], name="pending_created_at")
 
+        # Default platform config
         existing = await self.settings.find_one({"_id": "platform_config"})
         if not existing:
             await self.settings.insert_one({
@@ -144,73 +170,113 @@ class Database:
                 "max_file_mb": 50,
                 "created_at": datetime.now(timezone.utc),
             })
+        else:
+            updates = {}
+            if "force_join_channels" not in existing: updates["force_join_channels"] = []
+            if "maintenance_mode" not in existing: updates["maintenance_mode"] = False
+            if "bot_creation_enabled" not in existing: updates["bot_creation_enabled"] = True
+            if "max_video_seconds" not in existing: updates["max_video_seconds"] = 600
+            if "max_file_mb" not in existing: updates["max_file_mb"] = 50
+            if updates:
+                await self.settings.update_one({"_id": "platform_config"}, {"$set": updates})
+
+        # Default Premium Prices
+        prem_cfg = await self.settings.find_one({"_id": "premium_prices"})
+        if not prem_cfg:
+            await self.settings.insert_one({
+                "_id": "premium_prices",
+                "prices": {"1m": 100, "3m": 300, "6m": 600, "1y": 1000}
+            })
 
     # =========================================================
-    # PREMIUM DATABASE METHODS (SAXIDA AAD U BAAHDNAYD)
+    # PREMIUM METHODS
     # =========================================================
 
-    async def get_premium_prices(self):
+    async def get_premium_prices(self) -> dict:
         cfg = await self.settings.find_one({"_id": "premium_prices"})
-        if not cfg:
-            return {"1m": 100, "3m": 300, "6m": 600, "1y": 1000}
-        return cfg.get("prices", {"1m": 100, "3m": 300, "6m": 600, "1y": 1000})
+        if cfg and "prices" in cfg:
+            return cfg["prices"]
+        return {"1m": 100, "3m": 300, "6m": 600, "1y": 1000}
 
-    async def set_premium_prices(self, new_prices: dict):
-        current = await self.get_premium_prices()
-        current.update(new_prices)
+    async def set_premium_prices(self, new_prices: dict) -> dict:
+        prices = await self.get_premium_prices()
+        prices.update(new_prices)
         await self.settings.update_one(
             {"_id": "premium_prices"},
-            {"$set": {"prices": current}},
+            {"$set": {"prices": prices}},
             upsert=True
         )
-        return current
+        return prices
 
-    async def activate_bot_premium(self, bot_id: int, owner_id: int, plan: str, days: int, stars: int):
+    async def activate_bot_premium(self, bot_id: int | str, owner_id: int | str, plan: str, days: int, stars: int):
+        bid = int(bot_id)
         now = datetime.now(timezone.utc)
-        bot = await self.get_bot(bot_id)
+        
+        bot = await self.get_bot(bid)
         current_until = None
-        if bot and "premium" in bot and isinstance(bot["premium"], dict):
-            current_until = bot["premium"].get("until")
-
-        if current_until and current_until > now:
-            until = current_until + timedelta(days=days)
-        else:
-            until = now + timedelta(days=days)
-
+        if bot and bot.get("premium", {}).get("until"):
+            curr = bot["premium"]["until"]
+            if isinstance(curr, datetime):
+                current_until = curr if curr.tzinfo else curr.replace(tzinfo=timezone.utc)
+        
+        start_date = current_until if (current_until and current_until > now) else now
+        until = start_date + timedelta(days=days)
+        
         premium_data = {
-            "is_premium": True,
+            "is_active": True,
             "plan": plan,
             "stars": stars,
             "activated_at": now,
             "until": until,
-            "activated_by": owner_id
+            "activated_by": int(owner_id)
         }
-
+        
         await self.bots.update_one(
-            {"bot_id": int(bot_id)},
+            {"bot_id": bid},
             {"$set": {"premium": premium_data}}
         )
         return until
 
-    async def grant_bot_premium(self, bot_id: int, days: int, granted_by: int):
-        bot = await self.get_bot(bot_id)
+    async def grant_bot_premium(self, bot_id: int | str, days: int, admin_id: int | str):
+        bid = int(bot_id)
+        bot = await self.get_bot(bid)
         if not bot:
             return None
-        return await self.activate_bot_premium(bot_id, bot.get("owner_id", granted_by), "grant", days, 0)
+        owner_id = bot.get("owner_id", admin_id)
+        return await self.activate_bot_premium(bid, owner_id, "grant", days, 0)
 
     async def get_premium_bots(self):
         now = datetime.now(timezone.utc)
-        cursor = self.bots.find({"premium.is_premium": True, "premium.until": {"$gt": now}})
+        cursor = self.bots.find({
+            "premium.is_active": True,
+            "premium.until": {"$gt": now}
+        }).sort("premium.until", ASCENDING)
         return await cursor.to_list(length=1000)
 
-    async def get_bot_premium_settings(self, bot_id: int):
-        doc = await self.premium_settings.find_one({"bot_id": int(bot_id)})
-        return doc or {}
+    async def is_bot_premium(self, bot_id: int | str) -> bool:
+        bot = await self.get_bot(int(bot_id))
+        if not bot or not bot.get("premium"):
+            return False
+        
+        until = bot["premium"].get("until")
+        if not until:
+            return False
+            
+        now = datetime.now(timezone.utc)
+        if isinstance(until, datetime):
+            until_tz = until if until.tzinfo else until.replace(tzinfo=timezone.utc)
+            return until_tz > now
+        return False
 
-    async def set_bot_premium_setting(self, bot_id: int, key: str, value):
+    async def get_bot_premium_settings(self, bot_id: int | str) -> dict:
+        doc = await self.premium_settings.find_one({"bot_id": int(bot_id)})
+        return doc.get("settings", {}) if doc else {}
+
+    async def set_bot_premium_setting(self, bot_id: int | str, key: str, value):
+        bid = int(bot_id)
         await self.premium_settings.update_one(
-            {"bot_id": int(bot_id)},
-            {"$set": {key: value, "updated_at": datetime.now(timezone.utc)}},
+            {"bot_id": bid},
+            {"$set": {f"settings.{key}": value, "updated_at": datetime.now(timezone.utc)}},
             upsert=True
         )
 
@@ -268,9 +334,11 @@ class Database:
         owner_id = int(owner_id)
         existing = await self.bots.find_one({"bot_id": bot_id})
         now = datetime.now(timezone.utc)
+
         created_at = existing.get("created_at") if existing else now
         status = existing.get("status", "starting") if existing else "starting"
         force_join_channels = existing.get("force_join_channels", []) if existing else []
+        premium = existing.get("premium", {}) if existing else {}
 
         bot_doc = {
             "bot_id": bot_id,
@@ -282,8 +350,11 @@ class Database:
             "created_at": created_at,
             "updated_at": now,
             "force_join_channels": force_join_channels,
+            "premium": premium
         }
+
         await self.bots.update_one({"bot_id": bot_id}, {"$set": bot_doc}, upsert=True)
+        logger.info("🤖 Managed bot saved: @%s (%s)", username, bot_id)
         return await self.get_bot(bot_id)
 
     async def get_bot(self, bot_id: int | str):
@@ -320,6 +391,8 @@ class Database:
         await self.bot_users.delete_many({"bot_id": bid})
         await self.downloads.delete_many({"bot_id": bid})
         await self.pending_downloads.delete_many({"bot_id": bid})
+        await self.premium_settings.delete_one({"bot_id": bid})
+        logger.info("🗑️ Managed bot deleted: %s", bid)
 
     async def search_bots(self, query: str):
         query = str(query).strip().lstrip("@")
@@ -336,8 +409,7 @@ class Database:
     # =========================================================
 
     async def save_bot_user(self, bot_id: int | str, user_id: int | str, username: str = "", full_name: str = ""):
-        bid = int(bot_id)
-        uid = int(user_id)
+        bid, uid = int(bot_id), int(user_id)
         now = datetime.now(timezone.utc)
         await self.bot_users.update_one(
             {"bot_id": bid, "user_id": uid},
@@ -353,8 +425,7 @@ class Database:
         return await self.bot_users.find_one({"bot_id": int(bot_id), "user_id": int(user_id)})
 
     async def set_user_language(self, bot_id: int | str, user_id: int | str, language: str):
-        bid = int(bot_id)
-        uid = int(user_id)
+        bid, uid = int(bot_id), int(user_id)
         now = datetime.now(timezone.utc)
         await self.bot_users.update_one(
             {"bot_id": bid, "user_id": uid},
@@ -441,7 +512,7 @@ class Database:
         }
 
     # =========================================================
-    # GLOBAL SETTINGS & FORCE JOIN
+    # GLOBAL SETTINGS
     # =========================================================
 
     async def get_system_setting(self, key: str, default=None):
@@ -463,6 +534,10 @@ class Database:
 
     async def set_maintenance_mode(self, status: bool):
         await self.set_system_setting("maintenance_mode", bool(status))
+
+    # =========================================================
+    # FORCE JOIN CHANNELS
+    # =========================================================
 
     async def get_global_force_join_channels(self):
         cfg = await self.settings.find_one({"_id": "platform_config"})
@@ -507,4 +582,5 @@ class Database:
         await self.pending_downloads.delete_one({"_id": pending_id})
 
 
+# Single Instance
 db = Database()
