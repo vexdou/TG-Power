@@ -191,7 +191,7 @@ LANGUAGES = {
         "users": "👥 Usuários",
         "downloads": "📥 Downloads",
         "admin_panel": "⚙️ **PAINEL DE ADMINISTRAÇÃO**",
-        "broadcast_prompt": "📢 **MODO TRANSMISÃO**",
+        "broadcast_prompt": "📢 **MODO TRANSMISSÃO**",
         "broadcast_start": "📢 Transmitindo para {count} usuários...",
         "broadcast_success": "✅ Transmissão concluída.\n\n📤 Enviados: {sent}\n❌ Falhas: {failed}",
     },
@@ -212,7 +212,7 @@ LANGUAGES = {
         "admin_panel": "⚙️ **एडमिन पैनल**",
         "broadcast_prompt": "📢 **ब्रॉडकास्ट मोड**",
         "broadcast_start": "📢 {count} उपयोगकर्ताओं को भेजा जा रहा है...",
-        "broadcast_success": "✅ ब्रॉडकास्ट पूरा हुआ।\n\n📤 भेजे गए: {sent}\n❌ असफल: {failed}",
+        "broadcast_success": "✅ ब्रॉडकास्ट पूरा हुआ。\n\n📤 भेजे गए: {sent}\n❌ असफल: {failed}",
     },
 
     "id": {
@@ -256,7 +256,7 @@ class ManagedBotHandler:
         self._setup_handlers()
 
     # =====================================================
-    # KEYBOARDS
+    # KEYBOARDS & PREMIUM BUTTONS (UP TO 10 BUTTONS)
     # =====================================================
 
     async def get_main_keyboard(self, user_id: int):
@@ -293,6 +293,35 @@ class ManagedBotHandler:
                 )
             ]
         ])
+
+    async def get_custom_keyboard(self, is_prem: bool, default_keyboard=None):
+        """Builds custom buttons (up to 10) for premium bots + default buttons like MUSIC."""
+        keyboard = []
+        if is_prem:
+            try:
+                settings = await db.get_bot_premium_settings(self.bot_id)
+                raw_buttons = settings.get("buttons", [])
+                row = []
+                for btn in raw_buttons[:10]:  # Max 10 custom buttons
+                    label = str(btn.get("label", "Button"))
+                    url = str(btn.get("url", "https://t.me"))
+                    row.append(InlineKeyboardButton(label, url=url))
+                    if len(row) == 2:  # 2 buttons per row
+                        keyboard.append(row)
+                        row = []
+                if row:
+                    keyboard.append(row)
+            except Exception:
+                logger.exception("Error building custom premium buttons")
+
+        if default_keyboard and isinstance(default_keyboard, InlineKeyboardMarkup):
+            for r in default_keyboard.inline_keyboard:
+                keyboard.append(r)
+        elif default_keyboard and isinstance(default_keyboard, list):
+            for r in default_keyboard:
+                keyboard.append(r)
+
+        return InlineKeyboardMarkup(keyboard) if keyboard else None
 
     def language_keyboard(self):
         return InlineKeyboardMarkup([
@@ -465,7 +494,7 @@ class ManagedBotHandler:
             pass
 
     # =====================================================
-    # START COMMAND
+    # START COMMAND (SUPPORTS CUSTOM START MESSAGE & BUTTONS)
     # =====================================================
 
     async def start_command(
@@ -488,10 +517,22 @@ class ManagedBotHandler:
         except Exception:
             logger.exception("save_bot_user failed")
 
-        await update.message.reply_text(
-            "🌐 Select your language:",
-            reply_markup=self.language_keyboard(),
-        )
+        # Check if bot is Premium and has custom start message
+        is_prem = await db.is_bot_premium(self.bot_id)
+        settings = await db.get_bot_premium_settings(self.bot_id) if is_prem else {}
+        custom_start = settings.get("start_message") if is_prem else None
+
+        if custom_start:
+            reply_markup = await self.get_custom_keyboard(is_prem, None)
+            await update.message.reply_text(
+                custom_start,
+                reply_markup=reply_markup,
+            )
+        else:
+            await update.message.reply_text(
+                "🌐 Select your language:",
+                reply_markup=self.language_keyboard(),
+            )
 
     # =====================================================
     # MESSAGE HANDLER
@@ -562,7 +603,7 @@ class ManagedBotHandler:
                 return
 
         # ---------------------------------------------
-        # 3. MEDIA DOWNLOAD LOGIC
+        # 3. MEDIA DOWNLOAD LOGIC (WITH PREMIUM SPEED & CAPTION)
         # ---------------------------------------------
         url = text
 
@@ -588,20 +629,26 @@ class ManagedBotHandler:
         status_msg = None
         file_path = None
 
+        # Check if Bot is Premium for priority speed and custom settings
+        is_prem = await db.is_bot_premium(self.bot_id)
+        settings = await db.get_bot_premium_settings(self.bot_id) if is_prem else {}
+
         try:
             status_msg = await update.message.reply_text(texts["downloading"])
 
             logger.info(
-                "Starting download bot=%s user=%s url=%s",
+                "Starting download bot=%s user=%s url=%s premium=%s",
                 self.bot_id,
                 user.id,
                 url,
+                is_prem,
             )
 
+            # Pass premium=is_prem for high-speed priority processing
             result = await downloader.download(
                 url=url,
                 user_id=user.id,
-                premium=False,
+                premium=is_prem,
             )
 
             if not result.get("success"):
@@ -631,35 +678,46 @@ class ManagedBotHandler:
             platform = result.get("platform", "general")
             media_type = result.get("media_type", "video")
 
+            # Custom Caption support for Premium bots
+            custom_caption = settings.get("caption") if is_prem else None
+
             # ---------------------------------------------
             # SHOW CHAT ACTION ("sending a video/photo/audio")
             # ---------------------------------------------
             if media_type == "audio":
                 await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_AUDIO)
+                audio_caption = custom_caption if custom_caption else f"🎵 {title[:900]}"
+                audio_markup = await self.get_custom_keyboard(is_prem, None)
                 with open(file_path, "rb") as audio:
                     await update.message.reply_audio(
                         audio=audio,
                         title=title[:64],
                         performer="TG-Power",
-                        caption=f"🎵 {title[:900]}",
+                        caption=audio_caption,
+                        reply_markup=audio_markup,
                     )
 
             elif media_type == "photo":
                 await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_PHOTO)
+                photo_caption = custom_caption if custom_caption else f"✅ {title[:900]}"
+                photo_markup = await self.get_custom_keyboard(is_prem, None)
                 with open(file_path, "rb") as photo:
                     await update.message.reply_photo(
                         photo=photo,
-                        caption=f"✅ {title[:900]}",
+                        caption=photo_caption,
+                        reply_markup=photo_markup,
                     )
 
             else:
                 await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_VIDEO)
+                video_caption = custom_caption if custom_caption else f"✅ {title[:900]}"
+                reply_markup = await self.get_custom_keyboard(is_prem, self.video_music_keyboard())
                 with open(file_path, "rb") as video:
                     await update.message.reply_video(
                         video=video,
-                        caption=f"✅ {title[:900]}",
+                        caption=video_caption,
                         supports_streaming=True,
-                        reply_markup=self.video_music_keyboard(),
+                        reply_markup=reply_markup,
                     )
 
             try:
@@ -718,11 +776,13 @@ class ManagedBotHandler:
         file_path = None
         mp3_path = None
 
+        is_prem = await db.is_bot_premium(self.bot_id)
+
         try:
             result = await downloader.download(
                 url=url,
                 user_id=user.id,
-                premium=False,
+                premium=is_prem,
             )
 
             if not result.get("success"):
@@ -747,15 +807,17 @@ class ManagedBotHandler:
 
                 target_file = mp3_path if os.path.exists(mp3_path) else file_path
 
-                # Show status action: "sending a music"
+                # Show status action: "sending audio"
                 await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_AUDIO)
 
+                audio_markup = await self.get_custom_keyboard(is_prem, None)
                 with open(target_file, "rb") as audio:
                     await query.message.reply_audio(
                         audio=audio,
                         title=title[:64],
                         performer="TG-Power",
                         caption=f"🎵 {title[:900]}",
+                        reply_markup=audio_markup,
                     )
                 await status_msg.delete()
             else:
