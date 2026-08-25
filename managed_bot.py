@@ -44,6 +44,10 @@ LANGUAGES = {
         "stats": "📊 BOT OWNER STATS",
         "users": "👥 Users",
         "downloads": "📥 Downloads",
+        "admin_panel": "⚙️ **ADMIN PANEL**\n\nSelect an option:",
+        "broadcast_prompt": "📢 **BROADCAST MODE**\n\nSend me a message, photo, or video to broadcast to all users.",
+        "broadcast_start": "📢 Broadcasting to {count} users...",
+        "broadcast_success": "✅ Broadcast finished.\n\n📤 Sent: {sent}\n❌ Failed: {failed}",
     },
 
     "so": {
@@ -66,6 +70,10 @@ LANGUAGES = {
         "stats": "📊 XOGTA BOTKA",
         "users": "👥 Users",
         "downloads": "📥 Downloads",
+        "admin_panel": "⚙️ **ADMIN PANEL**\n\nDooro waaxda aad rabto:",
+        "broadcast_prompt": "📢 **BROADCAST MODE**\n\nSoo dir qoraal, sawir ama video si loogu diro dhammaan isticmaaleyaasha bot-ka.",
+        "broadcast_start": "📢 Waxaa loo meel marinayaa {count} users...",
+        "broadcast_success": "✅ Broadcast-gii waa dhammaaday.\n\n📤 Loo diray: {sent}\n❌ Ku dhowaad/Hurtay: {failed}",
     },
 
     "ar": {
@@ -86,18 +94,17 @@ LANGUAGES = {
         "stats": "📊 إحصائيات البوت",
         "users": "👥 المستخدمون",
         "downloads": "📥 التنزيلات",
+        "admin_panel": "⚙️ **لوحة التحكم**\n\nاختر خيارًا:",
+        "broadcast_prompt": "📢 **وضع الإذاعة**\n\nأرسل نصًا أو صورة أو فيديو لإرساله إلى جميع المستخدمين.",
+        "broadcast_start": "📢 جارٍ الإرسال إلى {count} من المستخدمين...",
+        "broadcast_success": "✅ اكتملت الإذاعة.\n\n📤 تم الإرسال: {sent}\n❌ فشل: {failed}",
     },
 
     "es": {
-        "welcome": (
-            "👋 ¡Bienvenido!\n\n"
-            "Envíame un enlace público de:\n"
-            "YouTube, TikTok, Instagram, Facebook, "
-            "X, Pinterest o Snapchat."
-        ),
+        "welcome": "👋 ¡Bienvenido!\n\nEnvíame un enlace público.",
         "invalid": "❌ Envía un enlace http/https válido.",
         "downloading": "⏳ Descargando... Por favor espera.",
-        "music_downloading": "🎵 Convirtiendo a MP3... Por favor espera.",
+        "music_downloading": "🎵 Convirtiendo a MP3...",
         "error": "❌ Error:",
         "music_ready": "🎵 Convirtiendo video a MP3...",
         "video_ready": "🎬 Modo VIDEO activado.",
@@ -106,105 +113,124 @@ LANGUAGES = {
         "stats": "📊 ESTADÍSTICAS DEL BOT",
         "users": "👥 Usuarios",
         "downloads": "📥 Descargas",
+        "admin_panel": "⚙️ **PANEL DE CONTROL**",
+        "broadcast_prompt": "📢 **MODO TRANSMISIÓN**",
+        "broadcast_start": "📢 Transmitiendo a {count} usuarios...",
+        "broadcast_success": "✅ Transmisión finalizada.\n\n📤 Enviados: {sent}\n❌ Fallidos: {failed}",
     },
 
     "fr": {
-        "welcome": (
-            "👋 Bienvenue !\n\n"
-            "Envoyez-moi un lien public depuis :\n"
-            "YouTube, TikTok, Instagram, Facebook, "
-            "X, Pinterest ou Snapchat."
-        ),
+        "welcome": "👋 Bienvenue !\n\nEnvoyez-moi un lien public.",
         "invalid": "❌ Envoyez un lien http/https valide.",
-        "downloading": "⏳ Téléchargement en cours... Veuillez patienter.",
-        "music_downloading": "🎵 Conversion en MP3... Veuillez patienter.",
+        "downloading": "⏳ Téléchargement en cours...",
+        "music_downloading": "🎵 Conversion en MP3...",
         "error": "❌ Erreur :",
-        "music_ready": "🎵 Conversion de la vidéo en MP3...",
+        "music_ready": "🎵 Conversion en MP3...",
         "video_ready": "🎬 Mode VIDEO activé.",
         "language_changed": "✅ Langue modifiée.",
         "select_language": "🌐 Sélectionnez votre langue :",
         "stats": "📊 STATISTIQUES DU BOT",
         "users": "👥 Utilisateurs",
         "downloads": "📥 Téléchargements",
+        "admin_panel": "⚙️ **PANNEAU D'ADMINISTRATION**",
+        "broadcast_prompt": "📢 **MODE DIFFUSION**",
+        "broadcast_start": "📢 Diffusion auprès de {count} utilisateurs...",
+        "broadcast_success": "✅ Diffusion terminée.\n\n📤 Envoyés : {sent}\n❌ Échecs : {failed}",
     },
 
     "tr": {
-        "welcome": (
-            "👋 Hoş geldiniz!\n\n"
-            "YouTube, TikTok, Instagram, Facebook, "
-            "X, Pinterest veya Snapchat bağlantısı gönderin."
-        ),
-        "invalid": "❌ Geçerli bir http/https bağlantısı gönderin.",
-        "downloading": "⏳ İndiriliyor... Lütfen bekleyin.",
-        "music_downloading": "🎵 MP3'e dönüştürülüyor... Lütfen bekleyin.",
+        "welcome": "👋 Hoş geldiniz!",
+        "invalid": "❌ Geçerli bir bağlantı gönderin.",
+        "downloading": "⏳ İndiriliyor...",
+        "music_downloading": "🎵 MP3'e dönüştürülüyor...",
         "error": "❌ Hata:",
-        "music_ready": "🎵 Video MP3'e dönüştürülüyor...",
+        "music_ready": "🎵 MP3'e dönüştürülüyor...",
         "video_ready": "🎬 VIDEO modu etkinleştirildi.",
         "language_changed": "✅ Dil değiştirildi.",
         "select_language": "🌐 Dilinizi seçin:",
         "stats": "📊 BOT İSTATİSTİKLERİ",
         "users": "👥 Kullanıcılar",
         "downloads": "📥 İndirmeler",
+        "admin_panel": "⚙️ **YÖNETİCİ PANELSİ**",
+        "broadcast_prompt": "📢 **YAYIN MODU**",
+        "broadcast_start": "📢 {count} kullanıcıya yayın yapılıyor...",
+        "broadcast_success": "✅ Yayın tamamlandı.\n\n📤 Gönderilen: {sent}\n❌ Başarısız: {failed}",
     },
 
     "de": {
-        "welcome": "👋 Willkommen!\n\nSende mir einen öffentlichen Video-/Medienlink.",
-        "invalid": "❌ Bitte sende einen gültigen http/https-Link.",
-        "downloading": "⏳ Medien werden heruntergeladen...",
-        "music_downloading": "🎵 Wird in MP3 konvertiert...",
+        "welcome": "👋 Willkommen!",
+        "invalid": "❌ Bitte sende einen gültigen Link.",
+        "downloading": "⏳ Herunterladen...",
+        "music_downloading": "🎵 Konvertieren in MP3...",
         "error": "❌ Fehler:",
-        "music_ready": "🎵 Video wird in MP3 konvertiert...",
+        "music_ready": "🎵 Konvertieren in MP3...",
         "video_ready": "🎬 VIDEO-Modus aktiviert.",
         "language_changed": "✅ Sprache geändert.",
         "select_language": "🌐 Sprache auswählen:",
         "stats": "📊 BOT-STATISTIKEN",
         "users": "👥 Benutzer",
         "downloads": "📥 Downloads",
+        "admin_panel": "⚙️ **ADMIN-PANEL**",
+        "broadcast_prompt": "📢 **BROADCAST-MODUS**",
+        "broadcast_start": "📢 Senden an {count} Benutzer...",
+        "broadcast_success": "✅ Broadcast beendet.\n\n📤 Gesendet: {sent}\n❌ Fehlschläge: {failed}",
     },
 
     "pt": {
-        "welcome": "👋 Bem-vindo!\n\nEnvie um link público de vídeo/mídia.",
-        "invalid": "❌ Envie um link http/https válido.",
-        "downloading": "⏳ Baixando mídia...",
+        "welcome": "👋 Bem-vindo!",
+        "invalid": "❌ Envie um link válido.",
+        "downloading": "⏳ Baixando...",
         "music_downloading": "🎵 Convertendo para MP3...",
         "error": "❌ Erro:",
-        "music_ready": "🎵 Convertendo vídeo para MP3...",
+        "music_ready": "🎵 Convertendo para MP3...",
         "video_ready": "🎬 Modo VIDEO ativado.",
         "language_changed": "✅ Idioma alterado.",
         "select_language": "🌐 Selecione seu idioma:",
         "stats": "📊 ESTATÍSTICAS DO BOT",
         "users": "👥 Usuários",
         "downloads": "📥 Downloads",
+        "admin_panel": "⚙️ **PAINEL DE ADMINISTRAÇÃO**",
+        "broadcast_prompt": "📢 **MODO TRANSMISSÃO**",
+        "broadcast_start": "📢 Transmitindo para {count} usuários...",
+        "broadcast_success": "✅ Transmissão concluída.\n\n📤 Enviados: {sent}\n❌ Falhas: {failed}",
     },
 
     "hi": {
-        "welcome": "👋 स्वागत है!\n\nYouTube, TikTok, Instagram आदि का सार्वजनिक लिंक भेजें।",
-        "invalid": "❌ कृपया सही http/https लिंक भेजें।",
-        "downloading": "⏳ मीडिया डाउनलोड हो रहा है...",
+        "welcome": "👋 स्वागत है!",
+        "invalid": "❌ कृपया सही लिंक भेजें।",
+        "downloading": "⏳ डाउनलोड हो रहा है...",
         "music_downloading": "🎵 MP3 में बदला जा रहा है...",
         "error": "❌ त्रुटि:",
-        "music_ready": "🎵 वीडियो को MP3 में बदला जा रहा है...",
+        "music_ready": "🎵 MP3 में बदला जा रहा है...",
         "video_ready": "🎬 VIDEO मोड सक्रिय है।",
         "language_changed": "✅ भाषा बदल दी गई।",
         "select_language": "🌐 अपनी भाषा चुनें:",
         "stats": "📊 BOT आँकड़े",
         "users": "👥 उपयोगकर्ता",
         "downloads": "📥 डाउनलोड",
+        "admin_panel": "⚙️ **एडमिन पैनल**",
+        "broadcast_prompt": "📢 **ब्रॉडकास्ट मोड**",
+        "broadcast_start": "📢 {count} उपयोगकर्ताओं को भेजा जा रहा है...",
+        "broadcast_success": "✅ ब्रॉडकास्ट पूरा हुआ।\n\n📤 भेजे गए: {sent}\n❌ असफल: {failed}",
     },
 
     "id": {
-        "welcome": "👋 Selamat datang!\n\nKirim tautan video/media publik.",
-        "invalid": "❌ Kirim tautan http/https yang valid.",
-        "downloading": "⏳ Media sedang diunduh...",
+        "welcome": "👋 Selamat datang!",
+        "invalid": "❌ Kirim tautan yang valid.",
+        "downloading": "⏳ Mengunduh...",
         "music_downloading": "🎵 Mengonversi ke MP3...",
         "error": "❌ Kesalahan:",
-        "music_ready": "🎵 Mengonversi video ke MP3...",
+        "music_ready": "🎵 Mengonversi ke MP3...",
         "video_ready": "🎬 Mode VIDEO aktif.",
         "language_changed": "✅ Bahasa berhasil diubah.",
         "select_language": "🌐 Pilih bahasa:",
         "stats": "📊 STATISTIK BOT",
         "users": "👥 Pengguna",
         "downloads": "📥 Unduhan",
+        "admin_panel": "⚙️ **PANEL ADMIN**",
+        "broadcast_prompt": "📢 **MODE SIARAN**",
+        "broadcast_start": "📢 Menyiarkan ke {count} pengguna...",
+        "broadcast_success": "✅ Siaran selesai.\n\n📤 Terkirim: {sent}\n❌ Gagal: {failed}",
     },
 }
 
@@ -229,11 +255,10 @@ class ManagedBotHandler:
         self._setup_handlers()
 
     # =====================================================
-    # KEYBOARDS (REPLY KEYBOARDS & INLINE KEYBOARDS)
+    # KEYBOARDS
     # =====================================================
 
     async def get_main_keyboard(self, user_id: int):
-        """Keyboard Button-nadu waa ReplyKeyboardMarkup ma aha Inline"""
         if await self.is_owner(user_id):
             return ReplyKeyboardMarkup(
                 [
@@ -250,7 +275,6 @@ class ManagedBotHandler:
         )
 
     def get_admin_keyboard(self):
-        """Admin Panel menu keyboard buttons"""
         return ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📢 Broadcast"), KeyboardButton("📊 Stats")],
@@ -260,7 +284,6 @@ class ManagedBotHandler:
         )
 
     def video_music_keyboard(self):
-        """KALIYA MUSIC🎵 ayaa la soconaya video-ga"""
         return InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
@@ -382,6 +405,64 @@ class ManagedBotHandler:
             reply_markup=await self.get_main_keyboard(user_id),
         )
 
+    async def execute_broadcast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        lang = await self.get_language(user_id)
+        texts = LANGUAGES[lang]
+
+        users = await db.get_all_bot_users(self.bot_id)
+
+        start_text = texts.get("broadcast_start", "📢 Broadcasting to {count} users...").format(count=len(users))
+        progress = await update.message.reply_text(start_text)
+
+        sent = 0
+        failed = 0
+
+        for bot_user in users:
+            target_id = bot_user.get("user_id")
+            if not target_id:
+                continue
+
+            try:
+                if update.message.text:
+                    await self.app.bot.send_message(
+                        chat_id=target_id,
+                        text=update.message.text,
+                    )
+                elif update.message.photo:
+                    photo = update.message.photo[-1]
+                    await self.app.bot.send_photo(
+                        chat_id=target_id,
+                        photo=photo.file_id,
+                        caption=update.message.caption or "",
+                    )
+                elif update.message.video:
+                    await self.app.bot.send_video(
+                        chat_id=target_id,
+                        video=update.message.video.file_id,
+                        caption=update.message.caption or "",
+                    )
+                else:
+                    continue
+
+                sent += 1
+                await asyncio.sleep(0.05)
+
+            except Exception as exc:
+                failed += 1
+                logger.warning("Broadcast failed user=%s error=%s", target_id, exc)
+
+        context.user_data["broadcast_mode"] = False
+
+        try:
+            success_text = texts.get(
+                "broadcast_success", 
+                "✅ Broadcast finished.\n\n📤 Sent: {sent}\n❌ Failed: {failed}"
+            ).format(sent=sent, failed=failed)
+            await progress.edit_text(success_text)
+        except Exception:
+            pass
+
     # =====================================================
     # START COMMAND
     # =====================================================
@@ -406,14 +487,13 @@ class ManagedBotHandler:
         except Exception:
             logger.exception("save_bot_user failed")
 
-        # Marka /start la soo qoro mar walba Select your language ayaa loo soo dirayaa (Sida sawirka 2aad)
         await update.message.reply_text(
             "🌐 Select your language:",
             reply_markup=self.language_keyboard(),
         )
 
     # =====================================================
-    # MESSAGE / DOWNLOAD / KEYBOARD BUTTON HANDLER
+    # MESSAGE HANDLER
     # =====================================================
 
     async def handle_message(
@@ -426,13 +506,25 @@ class ManagedBotHandler:
 
         user = update.effective_user
         text = (update.message.text or "").strip()
+        lang = await self.get_language(user.id)
+        texts = LANGUAGES[lang]
 
         # ---------------------------------------------
-        # 1. KEYBOARD BUTTON ACTIONS
+        # 1. BROADCAST CHECK
+        # ---------------------------------------------
+        if context.user_data.get("broadcast_mode"):
+            if await self.is_owner(user.id):
+                await self.execute_broadcast(update, context)
+                return
+            else:
+                context.user_data["broadcast_mode"] = False
+
+        # ---------------------------------------------
+        # 2. KEYBOARD BUTTON ACTIONS
         # ---------------------------------------------
         if text in ["🌐 Language", "Language"]:
             await update.message.reply_text(
-                "🌐 Select your language:",
+                texts["select_language"],
                 reply_markup=self.language_keyboard(),
             )
             return
@@ -440,7 +532,7 @@ class ManagedBotHandler:
         if text in ["👨‍💼 Admin Panel", "Admin Panel"]:
             if await self.is_owner(user.id):
                 await update.message.reply_text(
-                    "⚙️ **ADMIN PANEL**\n\nDooro waaxda aad rabto:",
+                    texts.get("admin_panel", "⚙️ **ADMIN PANEL**"),
                     parse_mode="Markdown",
                     reply_markup=self.get_admin_keyboard(),
                 )
@@ -463,21 +555,17 @@ class ManagedBotHandler:
             if await self.is_owner(user.id):
                 context.user_data["broadcast_mode"] = True
                 await update.message.reply_text(
-                    "📢 **BROADCAST MODE**\n\n"
-                    "Soo dir qoraal, sawir ama video si loogu diro dhammaan isticmaaleyaasha bot-ka.",
+                    texts.get("broadcast_prompt", "📢 **BROADCAST MODE**"),
                     parse_mode="Markdown",
                 )
                 return
 
         # ---------------------------------------------
-        # 2. MEDIA DOWNLOAD LOGIC
+        # 3. MEDIA DOWNLOAD LOGIC
         # ---------------------------------------------
         url = text
 
         if not (url.startswith("http://") or url.startswith("https://")):
-            lang = await self.get_language(user.id)
-            texts = LANGUAGES[lang]
-
             await update.message.reply_text(
                 texts["invalid"],
                 reply_markup=await self.get_main_keyboard(user.id),
@@ -494,11 +582,7 @@ class ManagedBotHandler:
         except Exception:
             logger.exception("Could not save bot user")
 
-        # Save active URL for fast MP3 conversion
         context.user_data["last_url"] = url
-
-        lang = await self.get_language(user.id)
-        texts = LANGUAGES[lang]
 
         status_msg = None
         file_path = None
@@ -546,10 +630,6 @@ class ManagedBotHandler:
             platform = result.get("platform", "general")
             media_type = result.get("media_type", "video")
 
-            # ---------------------------------------------
-            # SEND DOWNLOADED MEDIA WITH MUSIC 🎵 BUTTON
-            # ---------------------------------------------
-
             if media_type == "audio":
                 with open(file_path, "rb") as audio:
                     await update.message.reply_audio(
@@ -567,7 +647,6 @@ class ManagedBotHandler:
                     )
 
             else:
-                # Video-ga kaliya waxaa la socda Inline Button-ka MUSIC 🎵
                 with open(file_path, "rb") as video:
                     await update.message.reply_video(
                         video=video,
@@ -618,7 +697,6 @@ class ManagedBotHandler:
         query,
         context,
     ):
-        """Marka 🎵 MUSIC button-ka la taabto si madafsan MP3 ugu badal video-ga"""
         user = query.from_user
         lang = await self.get_language(user.id)
         texts = LANGUAGES[lang]
@@ -626,25 +704,22 @@ class ManagedBotHandler:
         url = context.user_data.get("last_url")
 
         if not url:
-            await query.message.reply_text(
-                "❌ Fadlan soo dir link-ga video-ga mar kale."
-            )
+            await query.message.reply_text("❌ URL Not Found.")
             return
 
         status_msg = await query.message.reply_text(texts["music_downloading"])
         file_path = None
+        mp3_path = None
 
         try:
-            # MP3 audio extraction
             result = await downloader.download(
                 url=url,
                 user_id=user.id,
                 premium=False,
-                media_type="audio",
             )
 
             if not result.get("success"):
-                error_text = str(result.get("error", "Failed to convert music"))[:3000]
+                error_text = str(result.get("error", "Failed to download media"))[:3000]
                 await status_msg.edit_text(f"{texts['error']}\n\n{error_text}")
                 return
 
@@ -652,7 +727,20 @@ class ManagedBotHandler:
 
             if file_path and os.path.isfile(file_path):
                 title = str(result.get("title", "Audio Track"))
-                with open(file_path, "rb") as audio:
+
+                # Video to MP3 conversion using FFmpeg
+                mp3_path = os.path.splitext(file_path)[0] + ".mp3"
+                
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-y", "-i", file_path, "-vn", "-acodec", "libmp3lame", mp3_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+
+                target_file = mp3_path if os.path.exists(mp3_path) else file_path
+
+                with open(target_file, "rb") as audio:
                     await query.message.reply_audio(
                         audio=audio,
                         title=title[:64],
@@ -661,19 +749,24 @@ class ManagedBotHandler:
                     )
                 await status_msg.delete()
             else:
-                await status_msg.edit_text("❌ MP3 file error.")
+                await status_msg.edit_text("❌ File not found.")
 
         except Exception as exc:
             logger.exception("Music conversion error")
             if status_msg:
                 try:
-                    await status_msg.edit_text(f"❌ Error:\n\n{str(exc)[:1500]}")
+                    await status_msg.edit_text(f"{texts['error']}\n\n{str(exc)[:1500]}")
                 except Exception:
                     pass
         finally:
             if file_path:
                 try:
                     downloader.cleanup(file_path)
+                except Exception:
+                    pass
+            if mp3_path and os.path.exists(mp3_path):
+                try:
+                    os.remove(mp3_path)
                 except Exception:
                     pass
 
@@ -697,9 +790,6 @@ class ManagedBotHandler:
             data = query.data or ""
             user_id = query.from_user.id
 
-            # ---------------------------------------------
-            # LANGUAGE SELECTION & DELETE MESSAGE
-            # ---------------------------------------------
             if data.startswith("msetlang_"):
                 lang_code = data.split("_", 1)[1]
 
@@ -712,7 +802,6 @@ class ManagedBotHandler:
                     lang_code,
                 )
 
-                # 1. Tirtir doorashadii luqadda (delete message)
                 try:
                     await query.message.delete()
                 except Exception:
@@ -721,7 +810,6 @@ class ManagedBotHandler:
                 texts = LANGUAGES[lang_code]
                 main_kbd = await self.get_main_keyboard(user_id)
 
-                # 2. Soo dir sharaxaad botka iyo sidu u shaqeyo + ReplyKeyboard
                 await context.bot.send_message(
                     chat_id=user_id,
                     text=texts["welcome"],
@@ -729,9 +817,6 @@ class ManagedBotHandler:
                 )
                 return
 
-            # ---------------------------------------------
-            # MUSIC CONVERT
-            # ---------------------------------------------
             if data == "convert_music":
                 await self.convert_music(query, context)
                 return
@@ -771,16 +856,18 @@ class ManagedBotHandler:
         if not await self.is_owner(user_id):
             return
 
+        lang = await self.get_language(user_id)
+        texts = LANGUAGES[lang]
+
         context.user_data["broadcast_mode"] = True
 
         await update.message.reply_text(
-            "📢 **BROADCAST MODE**\n\n"
-            "Soo dir qoraal, sawir ama video. Waxaa loo diri doonaa dhammaan users-ka bot-ka.",
+            texts.get("broadcast_prompt", "📢 **BROADCAST MODE**"),
             parse_mode="Markdown",
         )
 
     # =====================================================
-    # BROADCAST MEDIA / MESSAGE HANDLER
+    # BROADCAST MEDIA HANDLER (PHOTO / VIDEO)
     # =====================================================
 
     async def handle_broadcast_media(
@@ -800,64 +887,7 @@ class ManagedBotHandler:
             context.user_data["broadcast_mode"] = False
             return
 
-        users = await db.get_all_bot_users(self.bot_id)
-
-        progress = await update.message.reply_text(
-            f"📢 Broadcasting to {len(users)} users..."
-        )
-
-        sent = 0
-        failed = 0
-
-        for bot_user in users:
-            target_id = bot_user.get("user_id")
-
-            if not target_id:
-                continue
-
-            try:
-                if update.message.text:
-                    await self.app.bot.send_message(
-                        chat_id=target_id,
-                        text=update.message.text,
-                    )
-                elif update.message.photo:
-                    photo = update.message.photo[-1]
-                    await self.app.bot.send_photo(
-                        chat_id=target_id,
-                        photo=photo.file_id,
-                        caption=update.message.caption or "",
-                    )
-                elif update.message.video:
-                    await self.app.bot.send_video(
-                        chat_id=target_id,
-                        video=update.message.video.file_id,
-                        caption=update.message.caption or "",
-                    )
-                else:
-                    continue
-
-                sent += 1
-                await asyncio.sleep(0.05)
-
-            except Exception as exc:
-                failed += 1
-                logger.warning(
-                    "Broadcast failed user=%s error=%s",
-                    target_id,
-                    exc,
-                )
-
-        context.user_data["broadcast_mode"] = False
-
-        try:
-            await progress.edit_text(
-                "✅ Broadcast finished.\n\n"
-                f"📤 Sent: {sent}\n"
-                f"❌ Failed: {failed}"
-            )
-        except Exception:
-            pass
+        await self.execute_broadcast(update, context)
 
     # =====================================================
     # ERROR HANDLER
