@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -9,44 +10,67 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+
 from database import db
 from downloader import downloader
 
+
 logger = logging.getLogger(__name__)
+
 
 LANGUAGES = {
     "en": {
-        "welcome": "👋 Welcome! Send me a public video/media link from YouTube, TikTok, Instagram, Facebook, X/Twitter, Pinterest or Snapchat.",
+        "welcome": (
+            "👋 Welcome! Send me a public video/media link from "
+            "YouTube, TikTok, Instagram, Facebook, X/Twitter, "
+            "Pinterest or Snapchat."
+        ),
         "invalid": "❌ Please send a valid http/https link.",
         "downloading": "⏳ Downloading media... Please wait.",
         "error": "❌ Error:",
     },
     "so": {
-        "welcome": "👋 Soo dhawoow! Ii soo dir link public ah oo YouTube, TikTok, Instagram, Facebook, X/Twitter, Pinterest ama Snapchat ah.",
+        "welcome": (
+            "👋 Soo dhawoow! Ii soo dir link public ah oo "
+            "YouTube, TikTok, Instagram, Facebook, X/Twitter, "
+            "Pinterest ama Snapchat ah."
+        ),
         "invalid": "❌ Fadlan soo dir link http/https sax ah.",
         "downloading": "⏳ Media-ga ayaa la soo dejinayaa... Fadlan sug.",
         "error": "❌ Cilad:",
     },
     "ar": {
-        "welcome": "👋 أهلاً بك! أرسل رابط وسائط عام من YouTube أو TikTok أو Instagram أو Facebook أو X أو Pinterest أو Snapchat.",
+        "welcome": (
+            "👋 أهلاً بك! أرسل رابط وسائط عام من YouTube أو TikTok "
+            "أو Instagram أو Facebook أو X أو Pinterest أو Snapchat."
+        ),
         "invalid": "❌ أرسل رابط http/https صحيح.",
         "downloading": "⏳ جارٍ التنزيل... يرجى الانتظار.",
         "error": "❌ خطأ:",
     },
     "es": {
-        "welcome": "👋 ¡Bienvenido! Envíame un enlace público de YouTube, TikTok, Instagram, Facebook, X, Pinterest o Snapchat.",
+        "welcome": (
+            "👋 ¡Bienvenido! Envíame un enlace público de YouTube, "
+            "TikTok, Instagram, Facebook, X, Pinterest o Snapchat."
+        ),
         "invalid": "❌ Envía un enlace http/https válido.",
         "downloading": "⏳ Descargando... Por favor espera.",
         "error": "❌ Error:",
     },
     "fr": {
-        "welcome": "👋 Bienvenue ! Envoyez un lien public YouTube, TikTok, Instagram, Facebook, X, Pinterest ou Snapchat.",
+        "welcome": (
+            "👋 Bienvenue ! Envoyez un lien public YouTube, TikTok, "
+            "Instagram, Facebook, X, Pinterest ou Snapchat."
+        ),
         "invalid": "❌ Envoyez un lien http/https valide.",
         "downloading": "⏳ Téléchargement en cours...",
         "error": "❌ Erreur:",
     },
     "tr": {
-        "welcome": "👋 Hoş geldiniz! YouTube, TikTok, Instagram, Facebook, X, Pinterest veya Snapchat bağlantısı gönderin.",
+        "welcome": (
+            "👋 Hoş geldiniz! YouTube, TikTok, Instagram, Facebook, "
+            "X, Pinterest veya Snapchat bağlantısı gönderin."
+        ),
         "invalid": "❌ Geçerli bir http/https bağlantısı gönderin.",
         "downloading": "⏳ İndiriliyor...",
         "error": "❌ Hata:",
@@ -69,9 +93,17 @@ class ManagedBotHandler:
         self._setup_handlers()
 
     def _setup_handlers(self):
-        self.app.add_handler(CommandHandler("start", self.start_command))
-        self.app.add_handler(CommandHandler("stats", self.stats_command))
-        self.app.add_handler(CommandHandler("broadcast", self.broadcast_command))
+        self.app.add_handler(
+            CommandHandler("start", self.start_command)
+        )
+
+        self.app.add_handler(
+            CommandHandler("stats", self.stats_command)
+        )
+
+        self.app.add_handler(
+            CommandHandler("broadcast", self.broadcast_command)
+        )
 
         self.app.add_handler(
             CallbackQueryHandler(self.handle_callbacks)
@@ -85,6 +117,10 @@ class ManagedBotHandler:
         )
 
         self.app.add_error_handler(self.error_handler)
+
+    # ---------------------------------------------------------
+    # START
+    # ---------------------------------------------------------
 
     async def start_command(
         self,
@@ -108,6 +144,7 @@ class ManagedBotHandler:
                 self.bot_id,
                 user.id,
             )
+
             lang = (bot_user or {}).get("language", "en")
             texts = LANGUAGES.get(lang, LANGUAGES["en"])
 
@@ -150,7 +187,10 @@ class ManagedBotHandler:
             )
 
         except Exception:
-            logger.exception("Managed /start error")
+            logger.exception(
+                "Managed /start error for bot %s",
+                self.bot_id,
+            )
 
             try:
                 await update.message.reply_text(
@@ -158,6 +198,10 @@ class ManagedBotHandler:
                 )
             except Exception:
                 pass
+
+    # ---------------------------------------------------------
+    # MESSAGE / DOWNLOAD
+    # ---------------------------------------------------------
 
     async def handle_message(
         self,
@@ -167,6 +211,8 @@ class ManagedBotHandler:
         if not update.message or not update.effective_user:
             return
 
+        user = update.effective_user
+
         url = (update.message.text or "").strip()
 
         if not (
@@ -174,96 +220,331 @@ class ManagedBotHandler:
             or url.startswith("https://")
         ):
             await update.message.reply_text(
-                "❌ Please send a valid media link."
-            )
-            return
-
-        user = update.effective_user
-
-        await db.save_bot_user(
-            self.bot_id,
-            user.id,
-            user.username or "",
-            user.full_name or "",
-        )
-
-        status_msg = await update.message.reply_text(
-            "⏳ **Downloading media... Please wait.**",
-            parse_mode="Markdown",
-        )
-
-        result = await downloader.download(
-            url=url,
-            user_id=user.id,
-            bot_id=self.bot_id,
-        )
-
-        if not result.get("success"):
-            error_text = str(
-                result.get("error", "Unknown download error")
-            )
-
-            try:
-                await status_msg.edit_text(
-                    f"❌ **Download failed:**\n`{error_text[:3500]}`",
-                    parse_mode="Markdown",
-                )
-            except Exception:
-                await status_msg.edit_text(
-                    f"❌ Download failed:\n{error_text[:3500]}"
-                )
-            return
-
-        file_path = result.get("file_path")
-        title = result.get("title") or "Downloaded Media"
-        media_type = result.get("media_type", "video")
-
-        if not file_path:
-            await status_msg.edit_text(
-                "❌ Download completed but no file was produced."
+                "❌ Please send a valid http/https media link."
             )
             return
 
         try:
+            # Save/update user
+            await db.save_bot_user(
+                self.bot_id,
+                user.id,
+                user.username or "",
+                user.full_name or "",
+            )
+        except Exception:
+            logger.exception(
+                "Could not save managed bot user: bot=%s user=%s",
+                self.bot_id,
+                user.id,
+            )
+
+        # Get user's language
+        lang = "en"
+
+        try:
+            bot_user = await db.get_bot_user(
+                self.bot_id,
+                user.id,
+            )
+
+            lang = (bot_user or {}).get(
+                "language",
+                "en",
+            )
+
+        except Exception:
+            logger.exception(
+                "Could not get user language: bot=%s user=%s",
+                self.bot_id,
+                user.id,
+            )
+
+        texts = LANGUAGES.get(
+            lang,
+            LANGUAGES["en"],
+        )
+
+        status_msg = None
+        file_path = None
+
+        try:
+            status_msg = await update.message.reply_text(
+                texts["downloading"]
+            )
+
+            logger.info(
+                "Starting download: bot=%s user=%s url=%s",
+                self.bot_id,
+                user.id,
+                url,
+            )
+
+            # IMPORTANT:
+            # downloader.py accepts:
+            # download(url, user_id, premium=False)
+            #
+            # Do NOT pass bot_id here.
+            result = await downloader.download(
+                url=url,
+                user_id=user.id,
+                premium=False,
+            )
+
+            logger.info(
+                "Download result: bot=%s user=%s success=%s",
+                self.bot_id,
+                user.id,
+                result.get("success"),
+            )
+
+            # -------------------------------------------------
+            # DOWNLOAD FAILED
+            # -------------------------------------------------
+
+            if not result.get("success"):
+                error_text = str(
+                    result.get(
+                        "error",
+                        "Unknown download error.",
+                    )
+                )
+
+                logger.error(
+                    "Managed bot download failed: "
+                    "bot=%s user=%s error=%s",
+                    self.bot_id,
+                    user.id,
+                    error_text,
+                )
+
+                error_text = error_text[:3500]
+
+                if status_msg:
+                    try:
+                        await status_msg.edit_text(
+                            f"❌ Download failed:\n\n{error_text}"
+                        )
+                    except Exception:
+                        try:
+                            await status_msg.edit_text(
+                                "❌ Download failed. "
+                                "Please try another link."
+                            )
+                        except Exception:
+                            pass
+
+                return
+
+            # -------------------------------------------------
+            # GET RESULT
+            # -------------------------------------------------
+
+            file_path = result.get("file_path")
+
+            title = (
+                result.get("title")
+                or "Downloaded Media"
+            )
+
+            media_type = (
+                result.get("media_type")
+                or "video"
+            )
+
+            platform = (
+                result.get("platform")
+                or "general"
+            )
+
+            if not file_path:
+                logger.error(
+                    "Downloader returned success without file: "
+                    "bot=%s user=%s result=%s",
+                    self.bot_id,
+                    user.id,
+                    result,
+                )
+
+                if status_msg:
+                    try:
+                        await status_msg.edit_text(
+                            "❌ Download completed, "
+                            "but no file was produced."
+                        )
+                    except Exception:
+                        pass
+
+                return
+
+            logger.info(
+                "Downloaded file: bot=%s user=%s "
+                "platform=%s type=%s path=%s",
+                self.bot_id,
+                user.id,
+                platform,
+                media_type,
+                file_path,
+            )
+
+            # -------------------------------------------------
+            # FILE CHECK
+            # -------------------------------------------------
+
+            import os
+
+            if not os.path.isfile(file_path):
+                logger.error(
+                    "Downloaded file does not exist: %s",
+                    file_path,
+                )
+
+                if status_msg:
+                    try:
+                        await status_msg.edit_text(
+                            "❌ The download finished, "
+                            "but the file could not be found."
+                        )
+                    except Exception:
+                        pass
+
+                return
+
+            # -------------------------------------------------
+            # SEND MEDIA
+            # -------------------------------------------------
+
             if media_type == "audio":
-                with open(file_path, "rb") as audio_file:
+                logger.info(
+                    "Uploading audio: bot=%s user=%s",
+                    self.bot_id,
+                    user.id,
+                )
+
+                with open(
+                    file_path,
+                    "rb",
+                ) as audio_file:
                     await update.message.reply_audio(
                         audio=audio_file,
                         title=title[:64],
                     )
+
+            elif media_type == "photo":
+                logger.info(
+                    "Uploading photo: bot=%s user=%s",
+                    self.bot_id,
+                    user.id,
+                )
+
+                with open(
+                    file_path,
+                    "rb",
+                ) as photo_file:
+                    await update.message.reply_photo(
+                        photo=photo_file,
+                        caption=f"✅ {title[:1000]}",
+                    )
+
             else:
-                with open(file_path, "rb") as video_file:
+                logger.info(
+                    "Uploading video: bot=%s user=%s",
+                    self.bot_id,
+                    user.id,
+                )
+
+                with open(
+                    file_path,
+                    "rb",
+                ) as video_file:
                     await update.message.reply_video(
                         video=video_file,
-                        caption=f"✅ {title[:900]}",
+                        caption=f"✅ {title[:1000]}",
                         supports_streaming=True,
                     )
 
-            await db.log_download(
+            # -------------------------------------------------
+            # LOG DOWNLOAD
+            # -------------------------------------------------
+
+            try:
+                await db.log_download(
+                    self.bot_id,
+                    user.id,
+                    platform,
+                    media_type,
+                )
+
+            except Exception:
+                logger.exception(
+                    "Could not log download: bot=%s user=%s",
+                    self.bot_id,
+                    user.id,
+                )
+
+            # -------------------------------------------------
+            # REMOVE STATUS MESSAGE
+            # -------------------------------------------------
+
+            if status_msg:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+
+            logger.info(
+                "Managed bot download completed: "
+                "bot=%s user=%s",
                 self.bot_id,
                 user.id,
-                result.get("platform", "general"),
-                media_type,
             )
 
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
+        # -----------------------------------------------------
+        # TELEGRAM UPLOAD ERROR
+        # -----------------------------------------------------
 
         except Exception as exc:
-            logger.exception("Telegram upload error")
+            logger.exception(
+                "Managed bot media processing/upload error: "
+                "bot=%s user=%s",
+                self.bot_id,
+                user.id,
+            )
 
-            try:
-                await status_msg.edit_text(
-                    "❌ Telegram could not upload this file. "
-                    "The downloaded file may be larger than Telegram's bot upload limit."
-                )
-            except Exception:
-                pass
+            error_text = str(exc).strip()
+
+            if not error_text:
+                error_text = "Unknown Telegram upload error."
+
+            # Don't expose an enormous Telegram traceback
+            error_text = error_text[:1500]
+
+            if status_msg:
+                try:
+                    await status_msg.edit_text(
+                        "❌ Could not send the downloaded media.\n\n"
+                        f"{error_text}"
+                    )
+                except Exception:
+                    pass
+
+        # -----------------------------------------------------
+        # CLEANUP
+        # -----------------------------------------------------
 
         finally:
-            downloader.cleanup(file_path)
+            if file_path:
+                try:
+                    downloader.cleanup(file_path)
+                except Exception:
+                    logger.exception(
+                        "Downloader cleanup failed: %s",
+                        file_path,
+                    )
+
+    # ---------------------------------------------------------
+    # STATS
+    # ---------------------------------------------------------
 
     async def stats_command(
         self,
@@ -274,7 +555,9 @@ class ManagedBotHandler:
             return
 
         try:
-            bot_data = await db.get_bot(self.bot_id)
+            bot_data = await db.get_bot(
+                self.bot_id
+            )
 
             if (
                 not bot_data
@@ -283,17 +566,25 @@ class ManagedBotHandler:
             ):
                 return
 
-            stats = await db.get_bot_stats(self.bot_id)
+            stats = await db.get_bot_stats(
+                self.bot_id
+            )
 
             await update.message.reply_text(
-                "📊 **BOT OWNER STATS**\n\n"
-                f"👥 Users: `{stats['total_users']}`\n"
-                f"📥 Downloads: `{stats['total_downloads']}`",
-                parse_mode="Markdown",
+                "📊 BOT OWNER STATS\n\n"
+                f"👥 Users: {stats.get('total_users', 0)}\n"
+                f"📥 Downloads: {stats.get('total_downloads', 0)}"
             )
 
         except Exception:
-            logger.exception("Stats error")
+            logger.exception(
+                "Stats error for bot %s",
+                self.bot_id,
+            )
+
+    # ---------------------------------------------------------
+    # BROADCAST
+    # ---------------------------------------------------------
 
     async def broadcast_command(
         self,
@@ -304,7 +595,9 @@ class ManagedBotHandler:
             return
 
         try:
-            bot_data = await db.get_bot(self.bot_id)
+            bot_data = await db.get_bot(
+                self.bot_id
+            )
 
             if (
                 not bot_data
@@ -315,12 +608,23 @@ class ManagedBotHandler:
 
             if not context.args:
                 await update.message.reply_text(
-                    "Usage: /broadcast Your message"
+                    "Usage:\n/broadcast Your message"
                 )
                 return
 
-            text = " ".join(context.args)
-            users = await db.get_all_bot_users(self.bot_id)
+            text = " ".join(
+                context.args
+            ).strip()
+
+            if not text:
+                await update.message.reply_text(
+                    "❌ Broadcast message cannot be empty."
+                )
+                return
+
+            users = await db.get_all_bot_users(
+                self.bot_id
+            )
 
             progress = await update.message.reply_text(
                 f"📢 Broadcasting to {len(users)} users..."
@@ -331,23 +635,50 @@ class ManagedBotHandler:
 
             for user in users:
                 try:
+                    user_id = user.get("user_id")
+
+                    if not user_id:
+                        failed += 1
+                        continue
+
                     await self.app.bot.send_message(
-                        chat_id=user["user_id"],
+                        chat_id=user_id,
                         text=text,
                     )
+
                     sent += 1
+
+                    # Small delay to reduce Telegram flood risk
                     await asyncio.sleep(0.05)
-                except Exception:
+
+                except Exception as exc:
                     failed += 1
 
-            await progress.edit_text(
-                f"✅ Broadcast finished.\n\n"
-                f"Sent: {sent}\n"
-                f"Failed: {failed}"
-            )
+                    logger.warning(
+                        "Broadcast failed: bot=%s user=%s error=%s",
+                        self.bot_id,
+                        user.get("user_id"),
+                        exc,
+                    )
+
+            try:
+                await progress.edit_text(
+                    "✅ Broadcast finished.\n\n"
+                    f"Sent: {sent}\n"
+                    f"Failed: {failed}"
+                )
+            except Exception:
+                pass
 
         except Exception:
-            logger.exception("Broadcast error")
+            logger.exception(
+                "Broadcast error for bot %s",
+                self.bot_id,
+            )
+
+    # ---------------------------------------------------------
+    # CALLBACKS / LANGUAGE
+    # ---------------------------------------------------------
 
     async def handle_callbacks(
         self,
@@ -362,8 +693,13 @@ class ManagedBotHandler:
         try:
             await query.answer()
 
-            if query.data.startswith("msetlang_"):
-                lang_code = query.data.split("_", 1)[1]
+            data = query.data or ""
+
+            if data.startswith("msetlang_"):
+                lang_code = data.split(
+                    "_",
+                    1,
+                )[1]
 
                 if lang_code not in LANGUAGES:
                     lang_code = "en"
@@ -374,14 +710,30 @@ class ManagedBotHandler:
                     lang_code,
                 )
 
-                texts = LANGUAGES[lang_code]
+                texts = LANGUAGES[
+                    lang_code
+                ]
 
-                await query.message.edit_text(
-                    f"✅ Language changed.\n\n{texts['welcome']}"
-                )
+                if query.message:
+                    try:
+                        await query.message.edit_text(
+                            f"✅ Language changed.\n\n"
+                            f"{texts['welcome']}"
+                        )
+                    except Exception:
+                        await query.message.reply_text(
+                            texts["welcome"]
+                        )
 
         except Exception:
-            logger.exception("Callback error")
+            logger.exception(
+                "Callback error for bot %s",
+                self.bot_id,
+            )
+
+    # ---------------------------------------------------------
+    # GLOBAL ERROR HANDLER
+    # ---------------------------------------------------------
 
     async def error_handler(
         self,
@@ -393,4 +745,4 @@ class ManagedBotHandler:
             self.bot_id,
             context.error,
             exc_info=context.error,
-        )
+            )
