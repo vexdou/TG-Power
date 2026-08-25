@@ -87,6 +87,7 @@ def _is_admin(uid):
     return int(uid) in _admins()
 
 def owner_plans(bot_id, prices):
+    prices = prices or {}
     p1m = prices.get("1m", DEFAULT_PRICES["1m"])
     p3m = prices.get("3m", DEFAULT_PRICES["3m"])
     p6m = prices.get("6m", DEFAULT_PRICES["6m"])
@@ -129,55 +130,68 @@ async def premium_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = q.data.split(":")
     
     if len(parts) < 3:
-        await q.answer()
+        try:
+            await q.answer()
+        except Exception:
+            pass
         return True
         
     action = parts[1]
     try:
         bot_id = int(parts[2])
     except ValueError:
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return True
+
+    try:
+        bot = await db.get_bot(bot_id)
+        bot_owner = bot.get("owner_id") if bot else None
+
+        if not bot or (bot_owner is not None and int(bot_owner) != uid):
+            await q.answer(await localized(uid, "not_owner"), show_alert=True)
+            return True
+
+        # Hal jeer oo kaliya u jawaab callback-ka marka la xaqiijiyo milkiilaha
         await q.answer()
-        return True
 
-    bot = await db.get_bot(bot_id)
-    
-    # Hubinta Milkiilaha Bot-ka
-    bot_owner = bot.get("owner_id") if bot else None
-    if not bot or (bot_owner is not None and int(bot_owner) != uid):
-        await q.answer(await localized(uid, "not_owner"), show_alert=True)
-        return True
+        if action == "bot":
+            prices = await db.get_premium_prices()
+            await q.edit_message_text(
+                await localized(uid, "plans"),
+                reply_markup=owner_plans(bot_id, prices),
+            )
+            return True
 
-    # Jawaabta callback query-ga hal jeer oo kaliya halkan ku bixi
-    await q.answer()
-
-    if action == "bot":
-        prices = await db.get_premium_prices() or {}
-        await q.edit_message_text(
-            await localized(uid, "plans"),
-            reply_markup=owner_plans(bot_id, prices),
-        )
-        return True
-
-    if action == "buy" and len(parts) >= 4:
-        plan = parts[3]
-        if plan not in PLANS:
+        if action == "buy" and len(parts) >= 4:
+            plan = parts[3]
+            if plan not in PLANS:
+                return True
+                
+            prices = await db.get_premium_prices()
+            stars = int(prices.get(plan, DEFAULT_PRICES.get(plan, 100)))
+            title, days = PLANS[plan]
+            payload = f"tgpower-premium:{bot_id}:{plan}:{uid}"
+            
+            await context.bot.send_invoice(
+                chat_id=uid,
+                title=f"TG-Power Premium — {title}",
+                description=f"Premium for @{bot.get('username') or bot_id}. No system ads + priority processing + premium controls.",
+                payload=payload,
+                currency="XTR",
+                prices=[LabeledPrice(label=f"Premium {title}", amount=stars)],
+            )
             return True
             
-        prices = await db.get_premium_prices() or {}
-        stars = int(prices.get(plan, DEFAULT_PRICES.get(plan, 100)))
-        title, days = PLANS[plan]
-        payload = f"tgpower-premium:{bot_id}:{plan}:{uid}"
-        
-        await context.bot.send_invoice(
-            chat_id=uid,
-            title=f"TG-Power Premium — {title}",
-            description=f"Premium for @{bot.get('username') or bot_id}. No system ads + priority processing + premium controls.",
-            payload=payload,
-            currency="XTR",
-            prices=[LabeledPrice(label=f"Premium {title}", amount=stars)],
-        )
-        return True
-        
+    except Exception as e:
+        logger.exception("Error in premium_callback: %s", e)
+        try:
+            await q.answer("❌ Error processing request.", show_alert=True)
+        except Exception:
+            pass
+
     return True
 
 async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -189,7 +203,7 @@ async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         _, bot_id, plan, owner_id = payload.split(":")
         bot = await db.get_bot(int(bot_id))
-        prices = await db.get_premium_prices() or {}
+        prices = await db.get_premium_prices()
         
         expected_price = int(prices.get(plan, DEFAULT_PRICES.get(plan, 100)))
         bot_owner = bot.get("owner_id") if bot else None
@@ -218,7 +232,7 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if owner_id != update.effective_user.id or plan not in PLANS:
             return
             
-        prices = await db.get_premium_prices() or {}
+        prices = await db.get_premium_prices()
         stars = int(prices.get(plan, DEFAULT_PRICES.get(plan, 100)))
         days = PLANS[plan][1]
         
@@ -248,13 +262,13 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def admin_premium_center(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not _is_admin(update.effective_user.id):
         return
-    prices = await db.get_premium_prices() or {}
+    prices = await db.get_premium_prices()
     p1m = prices.get("1m", DEFAULT_PRICES["1m"])
     p3m = prices.get("3m", DEFAULT_PRICES["3m"])
     p6m = prices.get("6m", DEFAULT_PRICES["6m"])
     p1y = prices.get("1y", DEFAULT_PRICES["1y"])
     
-    premium = await db.get_premium_bots() or []
+    premium = await db.get_premium_bots()
     await update.message.reply_text(
         "⭐ PREMIUM ADMIN CENTER\n\n"
         f"1 Month: {p1m} ⭐\n3 Months: {p3m} ⭐\n6 Months: {p6m} ⭐\n1 Year: {p1y} ⭐\n\n"
@@ -276,7 +290,7 @@ async def admin_premium_callback(update: Update, context: ContextTypes.DEFAULT_T
     await q.answer()
     action = data[1] if len(data) > 1 else ""
     if action == "prices":
-        prices = await db.get_premium_prices() or {}
+        prices = await db.get_premium_prices()
         p1m = prices.get("1m", DEFAULT_PRICES["1m"])
         p3m = prices.get("3m", DEFAULT_PRICES["3m"])
         p6m = prices.get("6m", DEFAULT_PRICES["6m"])
@@ -288,7 +302,7 @@ async def admin_premium_callback(update: Update, context: ContextTypes.DEFAULT_T
             "/setpremium 1m 100\n/setpremium 3m 300\n/setpremium 6m 600\n/setpremium 1y 1000"
         )
     elif action == "list":
-        bots = await db.get_premium_bots() or []
+        bots = await db.get_premium_bots()
         if not bots:
             await q.edit_message_text("⭐ No premium bots yet.")
             return True
@@ -307,7 +321,7 @@ async def admin_premium_callback(update: Update, context: ContextTypes.DEFAULT_T
         if not b: 
             await q.edit_message_text("❌ Bot not found.")
             return True
-        settings=await db.get_bot_premium_settings(bid) or {}
+        settings=await db.get_bot_premium_settings(bid)
         await q.edit_message_text(
             f"⭐ PREMIUM BOT @{b.get('username') or bid}\n\n"
             f"Caption: {settings.get('caption','Default')}\n"
@@ -316,7 +330,7 @@ async def admin_premium_callback(update: Update, context: ContextTypes.DEFAULT_T
             "Use /premiumcaption BOT_ID text\nUse /premiumad BOT_ID text\nUse /premiumbutton BOT_ID Label|https://example.com"
         )
     elif action == "stats":
-        bots=await db.get_premium_bots() or []
+        bots=await db.get_premium_bots()
         total_stars=sum(int((b.get('premium') or {}).get('stars',0)) for b in bots)
         await q.edit_message_text(f"📊 PREMIUM STATS\n\nActive premium bots: {len(bots)}\nRecorded Stars: {total_stars} ⭐")
     elif action in {"grant","caption","buttons","ads"}:
@@ -352,7 +366,7 @@ async def admin_premium_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             bid=int(parts[1])
             raw=parts[2]
             label,url=raw.split("|",1)
-            settings=await db.get_bot_premium_settings(bid) or {}
+            settings=await db.get_bot_premium_settings(bid)
             buttons=settings.get("buttons",[])
             if len(buttons)>=10: 
                 await update.message.reply_text("❌ Maximum 10 buttons.")
