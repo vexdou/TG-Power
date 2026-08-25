@@ -967,7 +967,7 @@ class MainSaaSBot:
     async def show_bot_users(self, update):
         await self.choose_bot(update, "bu")
 
-    async def show_bot_users_for(self, query, bot_id):
+        async def show_bot_users_for(self, query, bot_id):
 
         users = await db.get_all_bot_users(bot_id)
         bot = await db.get_bot(bot_id)
@@ -982,12 +982,12 @@ class MainSaaSBot:
         )
 
         for user in users[:100]:
-            text += (
-                f"• {user.get('first_name') "
-                f"or user.get('username') "
-                f"or user.get('user_id')} — "
-                f"{user.get('user_id')}\n"
+            name = (
+                user.get("first_name")
+                or user.get("username")
+                or user.get("user_id")
             )
+            text += f"• {name} — {user.get('user_id')}\n"
 
         await query.edit_message_text(
             text[:4000],
@@ -1002,6 +1002,7 @@ class MainSaaSBot:
                 ]
             ),
         )
+
 
     async def show_downloads(self, update):
 
