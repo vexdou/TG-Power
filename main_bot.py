@@ -967,8 +967,7 @@ class MainSaaSBot:
     async def show_bot_users(self, update):
         await self.choose_bot(update, "bu")
 
-        async def show_bot_users_for(self, query, bot_id):
-
+    async def show_bot_users_for(self, query, bot_id):
         users = await db.get_all_bot_users(bot_id)
         bot = await db.get_bot(bot_id)
 
@@ -1002,6 +1001,7 @@ class MainSaaSBot:
                 ]
             ),
         )
+
 
 
     async def show_downloads(self, update):
