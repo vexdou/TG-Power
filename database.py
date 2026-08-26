@@ -4,11 +4,11 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, DESCENDING
 
-import config
+from config import Config
 
 
-client = AsyncIOMotorClient(config.MONGO_URI)
-db: AsyncIOMotorDatabase = client[config.DB_NAME]
+client = AsyncIOMotorClient(Config.MONGO_URI)
+db: AsyncIOMotorDatabase = client[Config.DB_NAME]
 
 users_col = db["users"]
 bots_col = db["bots"]
@@ -208,7 +208,7 @@ async def set_creation_access(user_id: int, allowed: bool):
 
 
 async def can_create_bot(user_id: int):
-    if user_id in config.ADMIN_IDS:
+    if user_id in Config.ADMIN_IDS:
         return True
 
     global_setting = await settings_col.find_one({"key": "bot_creation"})

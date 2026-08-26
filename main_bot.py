@@ -4,7 +4,7 @@ import logging
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-import config
+from config import Config
 
 from database import (
     add_user,
@@ -22,9 +22,9 @@ logger = logging.getLogger("TG-POWER.MAIN")
 
 main_app = Client(
     "main_saas_bot",
-    api_id=config.API_ID,
-    api_hash=config.API_HASH,
-    bot_token=config.BOT_TOKEN,
+    api_id=Config.API_ID,
+    api_hash=Config.API_HASH,
+    bot_token=Config.BOT_TOKEN,
     workers=16,
 )
 
@@ -40,7 +40,7 @@ def user_keyboard(user_id):
         [InlineKeyboardButton("📊 My Statistics", callback_data="my_stats")],
         [InlineKeyboardButton("📚 Help", callback_data="help")],
     ]
-    if user_id in config.ADMIN_IDS:
+    if user_id in Config.ADMIN_IDS:
         rows.append([InlineKeyboardButton("👑 Admin Panel", callback_data="admin")])
     return InlineKeyboardMarkup(rows)
 
@@ -85,7 +85,7 @@ async def start_handler(client, message):
 async def admin_handler(client, message):
     await save_user(message)
     uid = message.from_user.id
-    if uid not in config.ADMIN_IDS:
+    if uid not in Config.ADMIN_IDS:
         await message.reply_text("⛔ Admin only.")
         return
     await message.reply_text("👑 **Main Admin Panel**", reply_markup=admin_keyboard())
@@ -125,7 +125,7 @@ async def callback_handler(client, query: CallbackQuery):
             return
 
         count = await count_user_bots(uid)
-        maximum = getattr(config, "MAX_BOTS_PER_USER", 5)
+        maximum = getattr(Config, "MAX_BOTS_PER_USER", 5)
         if count >= maximum:
             await query.message.edit_text(
                 f"⛔ Maximum {maximum} bots reached.",
@@ -227,14 +227,14 @@ async def callback_handler(client, query: CallbackQuery):
         return
 
     if data == "admin":
-        if uid not in config.ADMIN_IDS:
+        if uid not in Config.ADMIN_IDS:
             return
         await query.message.edit_text(
             "👑 **Main Admin Panel**", reply_markup=admin_keyboard()
         )
         return
 
-    if uid not in config.ADMIN_IDS or not data.startswith("admin_"):
+    if uid not in Config.ADMIN_IDS or not data.startswith("admin_"):
         return
 
     if data == "admin_stats":
@@ -388,7 +388,7 @@ async def text_handler(client, message):
         return
 
     mode = pending_broadcast.get(uid)
-    if mode and uid in config.ADMIN_IDS:
+    if mode and uid in Config.ADMIN_IDS:
         pending_broadcast.pop(uid, None)
         await message.reply_text("📢 Broadcast started...")
 
