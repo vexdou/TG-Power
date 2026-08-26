@@ -1403,14 +1403,9 @@ class ManagedBotHandler:
         context,
     ):
         user = query.from_user
-        lang = await self.get_language(
-            user.id
-        )
-        texts = LANGUAGES[lang]
+        user_id = user.id
 
-        url = context.user_data.get(
-            "last_url"
-        )
+        url = context.user_data.get("last_url")
 
         if not url:
             await query.message.reply_text(
@@ -1418,21 +1413,56 @@ class ManagedBotHandler:
             )
             return
 
-        status_msg = await query.message.reply_text(
-            texts["music_downloading"]
-        )
-
         file_paths = []
-        mp3_path = None
 
         is_prem = await db.is_bot_premium(
             self.bot_id
         )
 
+        action_task = None
+        stop_action = asyncio.Event()
+
+        async def keep_sending_music_action():
+            while not stop_action.is_set():
+                try:
+                    await context.bot.send_chat_action(
+                        chat_id=user_id,
+                        action="upload_audio",
+                    )
+                except Exception:
+                    logger.debug(
+                        "Could not send music chat action",
+                        exc_info=True,
+                    )
+
+                try:
+                    await asyncio.wait_for(
+                        stop_action.wait(),
+                        timeout=4,
+                    )
+                except asyncio.TimeoutError:
+                    pass
+
         try:
-            result = await downloader.download(
+            # Start Telegram "Sending music..." action immediately.
+            action_task = asyncio.create_task(
+                keep_sending_music_action()
+            )
+
+            logger.info(
+                "Starting MP3 conversion bot=%s user=%s url=%s premium=%s",
+                self.bot_id,
+                user_id,
+                url,
+                is_prem,
+            )
+
+            # IMPORTANT:
+            # Use downloader.download_audio() directly.
+            # It already downloads + converts to MP3 using FFmpeg.
+            result = await downloader.download_audio(
                 url=url,
-                user_id=user.id,
+                user_id=user_id,
                 premium=is_prem,
             )
 
@@ -1440,13 +1470,12 @@ class ManagedBotHandler:
                 error_text = str(
                     result.get(
                         "error",
-                        "Failed to download media",
+                        "Failed to convert media to MP3.",
                     )
                 )[:3000]
 
-                await status_msg.edit_text(
-                    f"{texts['error']}\n\n"
-                    f"{error_text}"
+                await query.message.reply_text(
+                    f"❌ Error:\n\n{error_text}"
                 )
                 return
 
@@ -1461,73 +1490,73 @@ class ManagedBotHandler:
             ]
 
             if not file_paths:
-                await status_msg.edit_text(
-                    "❌ File not found."
+                await query.message.reply_text(
+                    "❌ Error:\n\nMP3 file was not created."
                 )
                 return
 
-            # MUSIC is intended for video/audio media.
-            source_path = next(
+            # Find the generated MP3 file.
+            mp3_path = next(
                 (
                     path
                     for path in file_paths
-                    if self._is_video_file(path)
+                    if str(path).lower().endswith(".mp3")
                 ),
-                file_paths[0],
+                None,
             )
+
+            if not mp3_path:
+                # download_audio() should return MP3.
+                # This fallback checks for any existing audio file.
+                mp3_path = next(
+                    (
+                        path
+                        for path in file_paths
+                        if str(path).lower().endswith(
+                            (
+                                ".m4a",
+                                ".aac",
+                                ".ogg",
+                                ".wav",
+                            )
+                        )
+                    ),
+                    None,
+                )
+
+            if not mp3_path:
+                raise RuntimeError(
+                    "MP3 file was not created by FFmpeg."
+                )
+
+            if not os.path.isfile(mp3_path):
+                raise FileNotFoundError(
+                    "Generated MP3 file does not exist."
+                )
+
+            file_size = os.path.getsize(mp3_path)
+
+            if file_size <= 0:
+                raise RuntimeError(
+                    "Generated MP3 file is empty."
+                )
+
+            # Telegram Bot API audio upload limit.
+            if file_size > 50 * 1024 * 1024:
+                raise RuntimeError(
+                    "The generated MP3 is larger than Telegram's "
+                    "50 MB upload limit."
+                )
 
             title = str(
                 result.get(
                     "title",
-                    "Audio Track",
+                    "Music",
                 )
-            )
+            ).strip()
 
-            mp3_path = (
-                os.path.splitext(
-                    source_path
-                )[0]
-                + ".mp3"
-            )
-
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                "-i",
-                source_path,
-                "-vn",
-                "-acodec",
-                "libmp3lame",
-                "-b:a",
-                "192k",
-                mp3_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            _, stderr = await proc.communicate()
-
-            if (
-                proc.returncode != 0
-                or not os.path.exists(mp3_path)
-            ):
-                error_detail = (
-                    stderr.decode(
-                        "utf-8",
-                        errors="ignore",
-                    )[-800:]
-                    if stderr
-                    else "FFmpeg conversion failed."
-                )
-
-                raise RuntimeError(
-                    error_detail
-                )
-
-            await context.bot.send_chat_action(
-                chat_id=user.id,
-                action=ChatAction.UPLOAD_AUDIO,
-            )
+            if not title:
+                title = "Music"
 
             audio_markup = (
                 await self.get_custom_keyboard(
@@ -1536,43 +1565,69 @@ class ManagedBotHandler:
                 )
             )
 
+            # Keep "Sending music..." visible while Telegram
+            # uploads the actual MP3.
+            await context.bot.send_chat_action(
+                chat_id=user_id,
+                action="upload_audio",
+            )
+
             with open(
                 mp3_path,
                 "rb",
             ) as audio:
+
                 await query.message.reply_audio(
                     audio=audio,
+                    filename="music.mp3",
                     title=title[:64],
                     performer="TG-Power",
                     caption=f"🎵 {title[:900]}",
                     reply_markup=audio_markup,
                 )
 
+            logger.info(
+                "MP3 sent successfully bot=%s user=%s file=%s",
+                self.bot_id,
+                user_id,
+                mp3_path,
+            )
+
             try:
-                await status_msg.delete()
+                await db.log_download(
+                    self.bot_id,
+                    user_id,
+                    result.get(
+                        "platform",
+                        "general",
+                    ),
+                    "audio",
+                )
             except Exception:
-                pass
+                logger.exception(
+                    "Could not log music download"
+                )
 
         except Exception as exc:
             logger.exception(
-                "Music conversion error"
+                "Music conversion error bot=%s user=%s",
+                self.bot_id,
+                user_id,
             )
 
-            if status_msg:
-                try:
-                    await status_msg.edit_text(
-                        f"{texts['error']}\n\n"
-                        f"{str(exc)[:1500]}"
-                    )
-                except Exception:
-                    pass
+            try:
+                await query.message.reply_text(
+                    f"❌ Error:\n\n{str(exc)[:1500]}"
+                )
+            except Exception:
+                pass
 
         finally:
-            if mp3_path and os.path.exists(
-                mp3_path
-            ):
+            stop_action.set()
+
+            if action_task:
                 try:
-                    os.remove(mp3_path)
+                    await action_task
                 except Exception:
                     pass
 
@@ -1582,7 +1637,9 @@ class ManagedBotHandler:
                         file_paths
                     )
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Music cleanup failed"
+                    )
 
     # =====================================================
     # CALLBACKS
