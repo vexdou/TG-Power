@@ -1,1511 +1,632 @@
 import asyncio
 import logging
-import os
-import tempfile
-import time
-from datetime import datetime, timezone
 
-from telegram import (
-    Update,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+
+import config
+
+from database import (
+    add_user,
+    get_user_bots,
+    count_user_bots,
+    get_main_stats,
+    can_create_bot,
+    is_bot_creation_enabled,
+    toggle_bot_creation,
+    log_event,
+    bots_col, users_col, bot_users_col, downloads_col, settings_col,
+)
+from premium import get_prices, grant as grant_premium, revoke as revoke_premium, stats as premium_stats
+
+logger = logging.getLogger("TG-POWER.MAIN")
+
+main_app = Client(
+    "main_saas_bot",
+    api_id=config.API_ID,
+    api_hash=config.API_HASH,
+    bot_token=config.BOT_TOKEN,
+    workers=16,
 )
 
-try:
-    from telegram import KeyboardButtonRequestManagedBot
-except ImportError:
-    KeyboardButtonRequestManagedBot = None
+pending_create = set()
+pending_broadcast = {}
 
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ManagedBotUpdatedHandler,
-    filters,
-)
+def user_keyboard(user_id):
+    rows = [
+        [
+            InlineKeyboardButton("➕ Create New Bot", callback_data="create_bot"),
+            InlineKeyboardButton("📦 My Bots", callback_data="my_bots"),
+        ],
+        [InlineKeyboardButton("📊 My Statistics", callback_data="my_stats")],
+        [InlineKeyboardButton("📚 Help", callback_data="help")],
+    ]
+    if user_id in config.ADMIN_IDS:
+        rows.append([InlineKeyboardButton("👑 Admin Panel", callback_data="admin")])
+    return InlineKeyboardMarkup(rows)
 
-from telegram.error import TelegramError, Forbidden
-
-from config import Config
-from database import db
-from bot_manager import bot_manager
-from force_join import force_join_checker
-from premium import (
-    register_premium_handlers,
-    premium_command,
-    admin_premium_center,
-)
-
-logger = logging.getLogger(__name__)
-
-LANGUAGES = {
-    "en": "English 🇬🇧",
-    "so": "Soomaali 🇸🇴",
-    "ar": "العربية 🇸🇦",
-    "es": "Español 🇪🇸",
-}
-
-USER_I18N = {
-    "en": {
-        "create": "➕ Create New Bot",
-        "my_bots": "🤖 My Bots",
-        "premium": "⭐ Premium",
-        "language": "🌐 Language",
-        "help": "ℹ️ Help",
-        "admin": "👑 Admin Panel",
-        "choose_language": "🌐 Choose your language:",
-        "language_saved": "✅ Language saved: English 🇬🇧",
-        "welcome_title": "🤖 TG-Power — Downloader Bot Builder",
-        "welcome": "This main bot creates ready-to-use video downloader bots.",
-        "platforms": "Your created bots can download supported videos from:\n• TikTok\n• Facebook\n• YouTube (up to 10 minutes)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 Every downloaded video has a MUSIC button to convert it to MP3.",
-        "instructions": "➕ Create New Bot — create your own downloader bot\n🤖 My Bots — manage your bots\n🌐 Language — choose your language",
-        "admin_hint": "",
-        "help_text": "ℹ️ HELP\n\n➕ Create New Bot — create a downloader bot.\n🤖 My Bots — see your bots.\nSend a video link to a created bot to download it.\nThe downloaded video has a MUSIC button to convert it to MP3.",
-        "id": "🆔 Your Telegram ID:\n\n{uid}\n\nSet this number in Render as OWNER_ID.",
-        "unauthorized": "⛔ You are not authorized.\n\nYour ID: {uid}\nAdd this ID to Render OWNER_ID or ADMIN_IDS.",
-        "bot_online": "✅ Bot is online!\n\n@{username}\nhttps://t.me/{username}\n\nSend /start to your new bot.",
-        "bot_saved_failed": "⚠️ Bot was saved, but could not be started. Check Render logs.",
-        "token_missing": "❌ Managed bot token could not be retrieved.",
-        "creation_disabled": "⛔ Bot creation is currently disabled.",
-    },
-    "so": {
-        "create": "➕ Samee Bot Cusub",
-        "my_bots": "🤖 Bots-kayga",
-        "premium": "⭐ Premium",
-        "language": "🌐 Luuqad",
-        "help": "ℹ️ Caawimo",
-        "admin": "👑 Admin Panel",
-        "choose_language": "🌐 Dooro luuqadda:",
-        "language_saved": "✅ Luuqadda waa la keydiyey: Soomaali 🇸🇴",
-        "welcome_title": "🤖 TG-Power — Dhisaha Downloader Bot",
-        "welcome": "Bot-kan weyn wuxuu kuu sameeyaa bots diyaar u ah dajinta videos-ka.",
-        "platforms": "Bots-ka aad sameysato waxay ka dajin karaan videos:\n• TikTok\n• Facebook\n• YouTube (ilaa 10 daqiiqo)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 Video kasta oo la dajiyo wuxuu leeyahay MUSIC si loogu beddelo MP3.",
-        "instructions": "➕ Samee Bot Cusub — samee downloader bot-kaaga\n🤖 Bots-kayga — maamul bots-kaaga\n🌐 Luuqad — beddel luuqadda bot-ka",
-        "admin_hint": "",
-        "help_text": "ℹ️ CAAWIMO\n\n➕ Samee Bot Cusub — samee downloader bot.\n🤖 Bots-kayga — eeg oo maamul bots-kaaga.\nLink video u dir bot-ka aad sameysatay si loo dajiyo.\nVideo-ga wuxuu leeyahay MUSIC si loogu beddelo MP3.",
-        "id": "🆔 Telegram ID-gaaga:\n\n{uid}\n\nNumber-kan ku geli Render OWNER_ID.",
-        "unauthorized": "⛔ Looma oggola.\n\nID-gaaga: {uid}\nKu dar Render OWNER_ID ama ADMIN_IDS.",
-        "bot_online": "✅ Bot-ku wuu shaqeynayaa!\n\n@{username}\nhttps://t.me/{username}\n\nU dir /start bot-kaaga cusub.",
-        "bot_saved_failed": "⚠️ Bot-ka waa la keydiyey laakiin lama bilaabi karin. Fiiri Render logs.",
-        "token_missing": "❌ Token-ka bot-ka lama heli karo.",
-        "creation_disabled": "⛔ Sameynta bots-ka hadda waa la xiray.",
-    },
-    "ar": {
-        "create": "➕ إنشاء بوت جديد",
-        "my_bots": "🤖 بوتاتي",
-        "premium": "⭐ بريميوم",
-        "language": "🌐 اللغة",
-        "help": "ℹ️ المساعدة",
-        "admin": "👑 لوحة الإدارة",
-        "choose_language": "🌐 اختر لغتك:",
-        "language_saved": "✅ تم حفظ اللغة: العربية 🇸🇦",
-        "welcome_title": "🤖 TG-Power — منشئ بوتات التحميل",
-        "welcome": "هذا البوت الرئيسي ينشئ لك بوتات جاهزة لتحميل الفيديوهات.",
-        "platforms": "يمكن لبوتاتك تحميل الفيديو من:\n• TikTok\n• Facebook\n• YouTube (حتى 10 دقائق)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 كل فيديو يتم تحميله يحتوي على زر MUSIC لتحويله إلى MP3.",
-        "instructions": "➕ إنشاء بوت جديد — أنشئ بوت التحميل الخاص بك\n🤖 بوتاتي — إدارة بوتاتك\n🌐 اللغة — تغيير لغة البوت",
-        "admin_hint": "",
-        "help_text": "ℹ️ المساعدة\n\n➕ إنشاء بوت جديد — إنشاء بوت لتحميل الفيديو.\n🤖 بوتاتي — عرض وإدارة بوتاتك.\nأرسل رابط فيديو إلى البوت ليتم تحميله.\nالفيديو يحتوي على زر MUSIC لتحويله إلى MP3.",
-        "id": "🆔 معرف Telegram الخاص بك:\n\n{uid}\n\nضع هذا الرقم في Render باسم OWNER_ID.",
-        "unauthorized": "⛔ غير مصرح لك.\n\nمعرفك: {uid}\nأضف المعرف إلى OWNER_ID أو ADMIN_IDS في Render.",
-        "bot_online": "✅ البوت يعمل الآن!\n\n@{username}\nhttps://t.me/{username}\n\nأرسل /start إلى البوت الجديد.",
-        "bot_saved_failed": "⚠️ تم حفظ البوت ولكن تعذر تشغيله. راجع سجلات Render.",
-        "token_missing": "❌ تعذر الحصول على رمز البوت.",
-        "creation_disabled": "⛔ إنشاء البوتات متوقف حالياً.",
-    },
-    "es": {
-        "create": "➕ Crear bot nuevo",
-        "my_bots": "🤖 Mis bots",
-        "premium": "⭐ Premium",
-        "language": "🌐 Idioma",
-        "help": "ℹ️ Ayuda",
-        "admin": "👑 Panel de administración",
-        "choose_language": "🌐 Elige tu idioma:",
-        "language_saved": "✅ Idioma guardado: Español 🇪🇸",
-        "welcome_title": "🤖 TG-Power — Creador de bots descargadores",
-        "welcome": "Este bot principal crea bots listos para descargar vídeos.",
-        "platforms": "Tus bots pueden descargar vídeos de:\n• TikTok\n• Facebook\n• YouTube (hasta 10 minutos)\n• Pinterest\n• Instagram\n• Snapchat\n• X/Twitter",
-        "features": "🎵 Cada vídeo descargado tiene un botón MUSIC para convertirlo a MP3.",
-        "instructions": "➕ Crear bot nuevo — crea tu bot descargador\n🤖 Mis bots — administra tus bots\n🌐 Idioma — cambia el idioma del bot",
-        "admin_hint": "",
-        "help_text": "ℹ️ AYUDA\n\n➕ Crear bot nuevo — crea un bot descargador.\n🤖 Mis bots — mira tus bots.\nEnvía un enlace de vídeo a un bot creado para descargarlo.\nEl vídeo tiene un botón MUSIC para convertirlo a MP3.",
-        "id": "🆔 Tu ID de Telegram:\n\n{uid}\n\nPon este número en Render como OWNER_ID.",
-        "unauthorized": "⛔ No tienes autorización.\n\nTu ID: {uid}\nAñádelo a OWNER_ID o ADMIN_IDS en Render.",
-        "bot_online": "✅ ¡El bot está activo!\n\n@{username}\nhttps://t.me/{username}\n\nEnvía /start a tu nuevo bot.",
-        "bot_saved_failed": "⚠️ El bot se guardó, pero no pudo iniciarse. Revisa los logs de Render.",
-        "token_missing": "❌ No se pudo obtener el token del bot.",
-        "creation_disabled": "⛔ La creación de bots está desactivada actualmente.",
-    },
-}
-
-
-def tr(lang: str, key: str, **kwargs) -> str:
-    lang = lang if lang in USER_I18N else "en"
-    return USER_I18N[lang][key].format(**kwargs)
-
-
-def localized_button(lang: str, key: str) -> str:
-    lang = lang if lang in USER_I18N else "en"
-    return USER_I18N[lang][key]
-
-
-def canonical_user_button(text: str) -> str:
-    for key in (
-        "create",
-        "my_bots",
-        "premium",
-        "language",
-        "help",
-        "admin",
-    ):
-        for lang in USER_I18N:
-            if text == USER_I18N[lang][key]:
-                return key
-    return text
-
-
-ADMIN_BUTTONS = [
-    "📊 Dashboard",
-    "🤖 All Bots",
-    "🔎 Search Bot",
-    "👥 Users",
-    "👥 Bot Users",
-    "👑 Bot Owners",
-    "📥 Downloads",
-    "📈 Download Stats",
-    "❌ Failed Downloads",
-    "🕘 Recent Downloads",
-    "📢 Broadcast All",
-    "📣 Broadcast Bot",
-    "👀 Broadcast Preview",
-    "🔐 Force Join",
-    "🔎 Force Join Check",
-    "⚙️ Bot Creation",
-    "▶️ Start Bot",
-    "⏹ Stop Bot",
-    "🔄 Restart Bot",
-    "🗑 Delete Bot",
-    "❤️ Bot Health",
-    "🚨 Bot Errors",
-    "♻️ Reload Bots",
-    "🛠 Maintenance",
-    "🧰 System Settings",
-    "⏱ Max Video",
-    "📦 Max File",
-    "🌐 Default Language",
-    "📋 User Export",
-    "🤖 Bot Export",
-    "🧹 Clear Downloads",
-    "🧽 Clear Pending",
-    "🧼 Cleanup Temp",
-    "🗄 Database Status",
-    "📡 Queue Status",
-    "⏲ Uptime",
-    "🔒 Security",
-    "🧑‍💼 Admin ID",
-    "📊 Platform Stats",
-    "🔄 Reset Settings",
-    "📜 Activity Log",
-    "💾 Backup Info",
-    "📦 Bot Capacity",
-    "🔔 Notifications",
-    "ℹ️ About",
-    "❓ Help",
-    "🔃 Refresh",
-    "🔙 User Panel",
-    "🧪 Test System",
-    "📍 Channel Settings",
-    "⭐ Premium Center",
-    "💰 Premium Prices",
-    "⭐ Premium Bots",
-    "🎁 Grant Premium",
-    "✏️ Premium Caption",
-    "🔘 Premium Buttons",
-    "📢 Premium Ads",
-    "📊 Premium Stats",
+ADMIN_ACTIONS = [
+    ("📊 Dashboard", "stats"), ("🤖 All Bots", "bots"), ("👥 Users", "users"), ("🔐 Bot Creation", "creation"), ("📢 Broadcast", "broadcast"),
+    ("🟢 Active Bots", "active"), ("🔴 Failed Bots", "failed"), ("👑 Bot Owners", "owners"), ("📥 Downloads", "downloads"), ("📈 Platform Stats", "platforms"),
+    ("📦 Bot Capacity", "capacity"), ("⭐ Premium Center", "premium"), ("⭐ Premium Bots", "premium_bots"), ("💰 Premium Prices", "premium_prices"), ("🎁 Grant Premium", "grant_premium"),
+    ("🚫 Revoke Premium", "revoke_premium"), ("📊 Premium Stats", "premium_stats"), ("⚙️ Premium Settings", "premium_settings"), ("🧰 System Settings", "system"), ("🛠 Maintenance", "maintenance"),
+    ("⏱ Max Video", "max_video"), ("📦 Max File", "max_file"), ("🌐 Default Language", "language"), ("📋 Export Users", "export_users"), ("🤖 Export Bots", "export_bots"),
+    ("🧹 Clear Downloads", "clear_downloads"), ("🧽 Clear Logs", "clear_logs"), ("🗄 DB Status", "db_status"), ("📡 Queue Status", "queue"), ("⏲ Uptime", "uptime"),
+    ("🔒 Security", "security"), ("🧑‍💼 Admin IDs", "admin_ids"), ("📜 Activity Log", "activity"), ("💾 Backup Info", "backup"), ("🔔 Notifications", "notifications"),
+    ("ℹ️ About", "about"), ("❓ Help", "help_admin"), ("🔃 Refresh", "refresh"), ("♻️ Reload Bots", "reload"), ("▶️ Start All", "start_all"),
+    ("⏹ Stop All", "stop_all"), ("🧪 Test System", "test"), ("❤️ Bot Health", "health"), ("🕘 Recent Downloads", "recent"), ("❌ Failed Downloads", "failed_downloads"),
+    ("👥 User Growth", "user_growth"), ("📥 Download Growth", "download_growth"), ("🎛 Creation Limits", "limits"), ("🔄 Reset Settings", "reset"), ("🏠 Main Menu", "main_menu"),
 ]
 
-
-def admin_ids():
-    ids = set()
-    try:
-        owner_id = getattr(Config, "OWNER_ID", None)
-        if owner_id:
-            ids.add(int(owner_id))
-    except (TypeError, ValueError):
-        pass
-
-    for value in getattr(Config, "ADMIN_IDS", []):
-        try:
-            ids.add(int(value))
-        except (TypeError, ValueError):
-            pass
-
-    return ids
-
-
-def is_admin(user_id: int) -> bool:
-    try:
-        return int(user_id) in admin_ids()
-    except (TypeError, ValueError):
-        return False
-
-
-def main_keyboard(user_id=None, lang="en"):
-    request_id = int(time.time() * 1000) % 2147483647
-
-    if KeyboardButtonRequestManagedBot is not None:
-        try:
-            create_button = KeyboardButton(
-                text=localized_button(lang, "create"),
-                request_managed_bot=KeyboardButtonRequestManagedBot(
-                    request_id=request_id,
-                    suggested_name="My Downloader Bot",
-                    suggested_username="MyDownloaderBot",
-                ),
-            )
-        except Exception:
-            create_button = KeyboardButton(localized_button(lang, "create"))
-    else:
-        create_button = KeyboardButton(localized_button(lang, "create"))
-
-    rows = [
-        [create_button],
-        [
-            KeyboardButton(localized_button(lang, "my_bots")),
-            KeyboardButton(localized_button(lang, "premium")),
-        ],
-        [
-            KeyboardButton(localized_button(lang, "language")),
-            KeyboardButton(localized_button(lang, "help")),
-        ],
-    ]
-
-    if user_id is not None and is_admin(user_id):
-        rows.append([KeyboardButton(localized_button(lang, "admin"))])
-
-    return ReplyKeyboardMarkup(
-        rows,
-        resize_keyboard=True,
-        is_persistent=True,
-    )
-
-
-def admin_keyboard():
+def admin_keyboard(page=0):
+    start = page * 10
+    chunk = ADMIN_ACTIONS[start:start + 10]
     rows = []
-    for i in range(0, len(ADMIN_BUTTONS), 2):
-        row = [KeyboardButton(ADMIN_BUTTONS[i])]
-        if i + 1 < len(ADMIN_BUTTONS):
-            row.append(KeyboardButton(ADMIN_BUTTONS[i + 1]))
+    for i in range(0, len(chunk), 2):
+        row = [InlineKeyboardButton(chunk[i][0], callback_data=f"admin_{chunk[i][1]}")]
+        if i + 1 < len(chunk):
+            row.append(InlineKeyboardButton(chunk[i + 1][0], callback_data=f"admin_{chunk[i + 1][1]}"))
         rows.append(row)
-
-    return ReplyKeyboardMarkup(
-        rows,
-        resize_keyboard=True,
-        is_persistent=True,
-    )
-
-
-def language_keyboard():
-    keys = list(LANGUAGES.keys())
-    rows = []
-    for i in range(0, len(keys), 2):
-        row = [InlineKeyboardButton(LANGUAGES[keys[i]], callback_data=f"lang_{keys[i]}")]
-        if i + 1 < len(keys):
-            row.append(InlineKeyboardButton(LANGUAGES[keys[i + 1]], callback_data=f"lang_{keys[i + 1]}"))
-        rows.append(row)
-
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"admin_page_{page - 1}"))
+    if start + 10 < len(ADMIN_ACTIONS):
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"admin_page_{page + 1}"))
+    if nav:
+        rows.append(nav)
     return InlineKeyboardMarkup(rows)
 
 
-class MainSaaSBot:
-
-    def __init__(self):
-        self.started_at = None
-        self.app = Application.builder().token(Config.BOT_TOKEN).build()
-        self._setup_handlers()
-
-    def _setup_handlers(self):
-        self.app.add_handler(CommandHandler("start", self.start_command))
-        self.app.add_handler(CommandHandler("admin", self.admin_command))
-        self.app.add_handler(CommandHandler("id", self.id_command))
-        self.app.add_handler(CommandHandler("language", self.language_command))
-        register_premium_handlers(self.app)
-        self.app.add_handler(MessageHandler(filters.StatusUpdate.MANAGED_BOT_CREATED, self.handle_managed_bot_created))
-        self.app.add_handler(ManagedBotUpdatedHandler(self.handle_managed_bot_updated))
-        self.app.add_handler(CallbackQueryHandler(self.handle_callback))
-        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
-        self.app.add_handler(
-            MessageHandler(
-                (filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.AUDIO | filters.VOICE | filters.ANIMATION),
-                self.handle_admin_media,
-            )
+async def save_user(message):
+    if not message.from_user:
+        return
+    try:
+        await add_user(
+            message.from_user.id,
+            message.from_user.first_name or "",
+            message.from_user.username or "",
         )
-        self.app.add_error_handler(self.error_handler)
+    except Exception:
+        logger.exception("Could not save user")
 
-    async def start_controller(self):
-        if self.app.running:
-            return
+@main_app.on_message(filters.private & filters.command("start"))
+async def start_handler(client, message):
+    logger.info("📩 /start received | user=%s",
+                message.from_user.id if message.from_user else "unknown")
+    await save_user(message)
+    await message.reply_text(
+        "👋 **Welcome to TG-Power!**\n\n"
+        "Create and manage your own Telegram downloader bot.",
+        reply_markup=user_keyboard(message.from_user.id),
+    )
+
+@main_app.on_message(filters.private & filters.command("admin"))
+async def admin_handler(client, message):
+    await save_user(message)
+    uid = message.from_user.id
+    if uid not in config.ADMIN_IDS:
+        await message.reply_text("⛔ Admin only.")
+        return
+    await message.reply_text("👑 **Main Admin Panel**", reply_markup=admin_keyboard())
+
+@main_app.on_message(filters.private & filters.command("cancel"))
+async def cancel_handler(client, message):
+    uid = message.from_user.id
+    pending_create.discard(uid)
+    pending_broadcast.pop(uid, None)
+    await message.reply_text("✅ Cancelled.", reply_markup=user_keyboard(uid))
+
+async def _admin_text(action):
+    if action in {"stats", "refresh"}:
+        stats = await get_main_stats()
+        return f"📊 DASHBOARD\n\nUsers: {stats.get('users',0)}\nActive bots: {stats.get('bots',0)}\nDownloads: {stats.get('downloads',0)}"
+    if action == "bots":
+        bots = await bots_col.find({"status": {"$ne": "deleted"}}).sort("created_at", -1).to_list(length=100)
+        return "🤖 ALL BOTS\n\n" + ("\n".join(f"@{b.get('username','unknown')} | {b.get('status','?')} | owner {b.get('owner_id','?')}" for b in bots) or "No bots.")
+    if action == "users":
+        return f"👥 USERS\n\nMain users: {await users_col.count_documents({})}\nBot users: {await bot_users_col.count_documents({})}"
+    if action == "active":
+        return f"🟢 ACTIVE BOTS\n\n{await bots_col.count_documents({'status':'active'})} active managed bots."
+    if action == "failed":
+        return f"🔴 FAILED BOTS\n\n{await bots_col.count_documents({'status':{'$in':['failed','error']}})} failed/error bots."
+    if action == "owners":
+        owners = await bots_col.distinct("owner_id")
+        return f"👑 BOT OWNERS\n\nUnique owners: {len(owners)}"
+    if action == "downloads":
+        return f"📥 DOWNLOADS\n\nTotal records: {await downloads_col.count_documents({})}"
+    if action == "platforms":
+        rows = await downloads_col.aggregate([{"$group":{"_id":"$platform","count":{"$sum":1}}},{"$sort":{"count":-1}}]).to_list(length=20)
+        return "📈 PLATFORM STATS\n\n" + ("\n".join(f"{r.get('_id','unknown')}: {r.get('count',0)}" for r in rows) or "No downloads yet.")
+    if action == "capacity":
+        return f"📦 BOT CAPACITY\n\nConfigured max per user: {getattr(config,'MAX_BOTS_PER_USER',5)}\nCurrent bots: {await bots_col.count_documents({'status':{'$ne':'deleted'}})}"
+    if action == "premium":
+        prices = await get_prices()
+        return "⭐ PREMIUM CENTER\n\n" + "\n".join(f"{k}: {v} XTR" for k,v in prices.items())
+    if action == "premium_bots":
+        bots = await bots_col.find({"premium.is_active": True, "premium.until": {"$gt": __import__('datetime').datetime.now(__import__('datetime').timezone.utc)}}).to_list(length=100)
+        return "⭐ PREMIUM BOTS\n\n" + ("\n".join(f"@{b.get('username','?')} | until {b.get('premium',{}).get('until','?')}" for b in bots) or "No active Premium bots.")
+    if action == "premium_prices":
+        p = await get_prices()
+        return "💰 PREMIUM PRICES\n\n" + "\n".join(f"{k}: {v} XTR" for k,v in p.items()) + "\n\nUse /premium_price PLAN PRICE to change a price."
+    if action == "premium_stats":
+        count, users, downloads = await premium_stats()
+        return f"📊 PREMIUM STATS\n\nPremium bots: {count}\nUsers: {users}\nDownloads: {downloads}"
+    if action == "premium_settings":
+        return "⚙️ PREMIUM SETTINGS\n\nCurrency: XTR\nCustom buttons per Premium bot: 10\nPremium captions: enabled\nPremium ads control: enabled"
+    if action == "system":
+        creation = await is_bot_creation_enabled()
+        return f"🧰 SYSTEM SETTINGS\n\nBot creation: {'ON' if creation else 'OFF'}\nMax bots/user: {getattr(config,'MAX_BOTS_PER_USER',5)}\nMax file: {getattr(config,'MAX_FILE_SIZE_MB',2000)} MB"
+    if action == "maintenance":
+        doc = await settings_col.find_one({"key":"maintenance"})
+        value = bool((doc or {}).get("value", False))
+        new = not value
+        await settings_col.update_one({"key":"maintenance"},{"$set":{"key":"maintenance","value":new}},upsert=True)
+        return f"🛠 Maintenance mode: {'ON' if new else 'OFF'}"
+    if action == "db_status":
         try:
-            await self.app.initialize()
-            await force_join_checker.start()
-            await self.app.bot.delete_webhook(drop_pending_updates=True)
-            await self.app.start()
-
-            if self.app.updater is None:
-                raise RuntimeError("Telegram updater is not available.")
-
-            await self.app.updater.start_polling(
-                drop_pending_updates=True,
-                allowed_updates=Update.ALL_TYPES,
-                poll_interval=1.0,
-                timeout=30,
-            )
-            me = await self.app.bot.get_me()
-            self.started_at = datetime.now(timezone.utc)
-            logger.info("👑 Main SaaS Bot Online: @%s", me.username)
-
-        except Exception:
-            logger.exception("🔴 Main SaaS Controller failed to start.")
-            try:
-                if self.app.updater and self.app.updater.running:
-                    await self.app.updater.stop()
-            except Exception:
-                pass
-            try:
-                if self.app.running:
-                    await self.app.stop()
-            except Exception:
-                pass
-            try:
-                await force_join_checker.stop()
-            except Exception:
-                pass
-            try:
-                await self.app.shutdown()
-            except Exception:
-                pass
-            raise
-
-    async def stop_controller(self):
-        try:
-            if self.app.updater and self.app.updater.running:
-                await self.app.updater.stop()
-            if self.app.running:
-                await self.app.stop()
-            await force_join_checker.stop()
-            await self.app.shutdown()
-        except Exception:
-            logger.exception("Main controller shutdown error")
-
-    async def id_command(self, update, context):
-        if not update.effective_user or not update.message:
-            return
-        lang = await db.get_main_user_language(update.effective_user.id)
-        await update.message.reply_text(tr(lang, "id", uid=update.effective_user.id))
-
-    async def language_command(self, update, context):
-        if not update.message or not update.effective_user:
-            return
-        lang = await db.get_main_user_language(update.effective_user.id)
-        await update.message.reply_text(tr(lang, "choose_language"), reply_markup=language_keyboard())
-
-    async def start_command(self, update, context):
-        if not update.effective_user or not update.message:
-            return
-        user = update.effective_user
-        await db.save_main_user(user.id, user.username or "", user.full_name or "")
-        lang = await db.get_main_user_language(user.id)
-
-        parts = [
-            tr(lang, "welcome_title"),
-            f"👋 {user.first_name or 'User'}!",
-            tr(lang, "welcome"),
-            tr(lang, "platforms"),
-            tr(lang, "features"),
-            tr(lang, "instructions"),
-        ]
-        admin_h = tr(lang, "admin_hint")
-        if admin_h:
-            parts.append(admin_h)
-
-        await update.message.reply_text("\n\n".join(parts), reply_markup=main_keyboard(user.id, lang))
-
-    async def admin_command(self, update, context):
-        if not update.effective_user or not update.message:
-            return
-        if not is_admin(update.effective_user.id):
-            lang = await db.get_main_user_language(update.effective_user.id)
-            await update.message.reply_text(tr(lang, "unauthorized", uid=update.effective_user.id))
-            return
-        await self.show_dashboard(update)
-
-    async def show_dashboard(self, update):
-        stats = await db.get_global_stats()
-        maintenance = await db.get_system_setting("maintenance_mode", False)
-        creation = await db.is_bot_creation_enabled()
-        force = await db.get_global_force_join_channels()
-
-        await update.message.reply_text(
-            "👑 MAIN ADMIN CONTROL CENTER\n\n"
-            f"👤 Main users: {stats['users']}\n"
-            f"🤖 All bots: {stats['bots']}\n"
-            f"🟢 Active bots: {stats['active_bots']}\n"
-            f"🔴 Failed bots: {stats['failed_bots']}\n"
-            f"👥 Bot users: {stats['bot_users']}\n"
-            f"📥 Downloads: {stats['downloads']}\n"
-            f"🔐 Force Join: {len(force)}/5 channels\n"
-            f"🤖 Bot creation: {'ON' if creation else 'OFF'}\n"
-            f"🛠 Maintenance: {'ON' if maintenance else 'OFF'}\n\n"
-            "Choose any control below.",
-            reply_markup=admin_keyboard(),
-        )
-
-    # =============== CUSTOM PREMIUM METHODS ADDED =============== #
-    
-    async def save_premium_price(self, update, context):
-        price_text = (update.message.text or "").strip()
-        context.user_data.clear()
-
-        if not price_text:
-            await update.message.reply_text("❌ Price cannot be empty.", reply_markup=admin_keyboard())
-            return
-
-        # U keydi database-ka (Settings)
-        await db.set_system_setting("premium_price", price_text)
-        await update.message.reply_text(
-            f"✅ Premium price updated to: **{price_text}**",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def save_grant_premium(self, update, context):
-        text = (update.message.text or "").strip()
-        context.user_data.clear()
-
-        try:
-            parts = text.split()
-            bot_id = parts[0]
-            days = int(parts[1]) if len(parts) > 1 else 30
-
-            bot = await db.get_bot(bot_id)
-            if not bot:
-                await update.message.reply_text(f"❌ Bot ID {bot_id} not found in database.", reply_markup=admin_keyboard())
-                return
-
-            # Database Update for Premium
-            if hasattr(db, 'bots'):
-                await db.bots.update_one(
-                    {"bot_id": bot_id}, 
-                    {"$set": {"is_premium": True, "premium_days": days}}
-                )
-            
-            await update.message.reply_text(
-                f"🎉 Successfully granted **{days} days** Premium to bot @{bot.get('username', bot_id)}!",
-                reply_markup=admin_keyboard(),
-            )
-        except Exception as e:
-            await update.message.reply_text(
-                "❌ Format incorrect. Send like this: `BOT_ID DAYS` (Example: `58291048 30`)",
-                reply_markup=admin_keyboard(),
-            )
-
-    # ========================================================== #
-
-    async def show_all_bots(self, update):
-        bots = await db.get_all_bots()
-        if not bots:
-            await update.message.reply_text("🤖 No managed bots yet.", reply_markup=admin_keyboard())
-            return
-
-        lines = ["🤖 ALL MANAGED BOTS\n"]
-        buttons = []
-        for bot in bots:
-            bid = bot.get("bot_id")
-            username = bot.get("username") or "N/A"
-            status = bot.get("status", "unknown")
-            icon = "🟢" if status == "active" else "🔴" if status == "failed" else "🟡"
-            lines.append(f"{icon} @{username} | {status} | ID {bid}")
-            buttons.append([
-                InlineKeyboardButton(f"⚙️ @{username}", callback_data=f"manage:{bid}"),
-                InlineKeyboardButton("📊 Stats", callback_data=f"bstats:{bid}"),
-            ])
-
-        await update.message.reply_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def show_all_bots_from_callback(self, query):
-        bots = await db.get_all_bots()
-        if not bots:
-            await query.edit_message_text("🤖 No managed bots yet.")
-            return
-
-        buttons = []
-        for bot in bots:
-            bid = bot["bot_id"]
-            username = bot.get("username") or "N/A"
-            buttons.append([
-                InlineKeyboardButton(f"⚙️ @{username}", callback_data=f"manage:{bid}"),
-                InlineKeyboardButton("📊 Stats", callback_data=f"bstats:{bid}"),
-            ])
-        await query.edit_message_text("🤖 ALL MANAGED BOTS", reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def choose_bot(self, update, mode):
-        bots = await db.get_all_bots()
-        if not bots:
-            await update.message.reply_text("🤖 No managed bots.", reply_markup=admin_keyboard())
-            return
-
-        buttons = []
-        for bot in bots:
-            bid = bot.get("bot_id")
-            username = bot.get("username") or "N/A"
-            buttons.append([InlineKeyboardButton(f"@{username}", callback_data=f"{mode}:{bid}")])
-
-        await update.message.reply_text("Choose a bot:", reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def show_users(self, update):
-        stats = await db.get_global_stats()
-        await update.message.reply_text(
-            "👥 USERS CENTER\n\n"
-            f"👤 Main-controller users: {stats['users']}\n"
-            f"👥 All managed-bot users: {stats['bot_users']}",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def show_bot_users(self, update):
-        await self.choose_bot(update, "bu")
-
-    async def show_bot_users_for(self, query, bot_id):
-        users = await db.get_all_bot_users(bot_id)
-        bot = await db.get_bot(bot_id)
-        username = (bot or {}).get("username", "N/A")
-
-        text = f"👥 USERS OF @{username}\n\nTotal: {len(users)}\n\n"
-        for user in users[:100]:
-            name = user.get("first_name") or user.get("username") or user.get("user_id")
-            text += f"• {name} — {user.get('user_id')}\n"
-
-        await query.edit_message_text(
-            text[:4000],
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 All Bots", callback_data="allbots")]]),
-        )
-
-    async def show_downloads(self, update):
-        total = await db.count_downloads()
-        success = await db.count_successful_downloads()
-        failed = await db.downloads.count_documents({"status": "failed"})
-
-        await update.message.reply_text(
-            f"📥 DOWNLOADS\n\nTotal: {total}\n🟢 Success: {success}\n🔴 Failed: {failed}",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def show_download_stats(self, update):
-        total = await db.count_downloads()
-        video = await db.downloads.count_documents({"media_type": "video", "status": "success"})
-        audio = await db.downloads.count_documents({"media_type": "audio", "status": "success"})
-        photo = await db.downloads.count_documents({"media_type": "photo", "status": "success"})
-
-        await update.message.reply_text(
-            f"📈 DOWNLOAD STATISTICS\n\n📥 Total: {total}\n🎬 Videos: {video}\n🎵 Audio: {audio}\n🖼 Photos: {photo}",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def show_health(self, update):
-        bots = await db.get_all_bots()
-        running = len(bot_manager.running_bots)
-        await update.message.reply_text(
-            "❤️ SYSTEM HEALTH\n\n"
-            f"DB records: {len(bots)}\n"
-            f"Running in memory: {running}\n"
-            f"Starting: {len(bot_manager.starting_bots)}\n"
-            f"MongoDB: {'🟢 connected' if db.db is not None else '🔴 disconnected'}",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def system_settings(self, update):
-        maintenance = await db.get_system_setting("maintenance_mode", False)
-        creation = await db.is_bot_creation_enabled()
-        force = await db.get_global_force_join_channels()
-
-        await update.message.reply_text(
-            "🧰 SYSTEM SETTINGS\n\n"
-            f"Bot creation: {'🟢 ON' if creation else '🔴 OFF'}\n"
-            f"Maintenance: {'🟢 ON' if maintenance else '🔴 OFF'}\n"
-            f"Max video: {Config.MAX_VIDEO_DURATION_SECONDS // 60} minutes\n"
-            f"Max file: {Config.MAX_FILE_SIZE_MB} MB\n"
-            f"Global force join: {len(force)}/5",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def creation_setting(self, update):
-        enabled = await db.is_bot_creation_enabled()
-        await update.message.reply_text(
-            "⚙️ BOT CREATION\n\n"
-            f"Current: {'🟢 ENABLED' if enabled else '🔴 DISABLED'}",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("🟢 Enable", callback_data="setting:creation:on"),
-                    InlineKeyboardButton("🔴 Disable", callback_data="setting:creation:off"),
-                ]
-            ]),
-        )
-
-    async def maintenance_setting(self, update):
-        enabled = await db.get_system_setting("maintenance_mode", False)
-        await update.message.reply_text(
-            "🛠 MAINTENANCE MODE\n\n"
-            f"Current: {'🟢 ON' if enabled else '🔴 OFF'}",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("🟢 Turn ON", callback_data="setting:maintenance:on"),
-                    InlineKeyboardButton("🔴 Turn OFF", callback_data="setting:maintenance:off"),
-                ]
-            ]),
-        )
-
-    async def force_join_menu(self, update):
-        channels = await db.get_global_force_join_channels()
-        text = "🔐 GLOBAL FORCE JOIN\n\nThis list applies to EVERY managed bot.\nMaximum: 5 channels.\n\n"
-        if channels:
-            text += "\n".join(f"{i + 1}. {c}" for i, c in enumerate(channels))
-        else:
-            text += "No channels configured."
-
-        rows = [[InlineKeyboardButton("🔎 Verify Main Bot Admin Access", callback_data="fj:verify")]]
-        if len(channels) < 5:
-            rows.append([InlineKeyboardButton("➕ Add Channel", callback_data="fj:add")])
-        for i, channel in enumerate(channels):
-            rows.append([InlineKeyboardButton(f"🗑 Remove {i + 1}: {channel}", callback_data=f"fj:del:{i}")])
-        if channels:
-            rows.append([InlineKeyboardButton("🧹 Remove ALL", callback_data="fj:clear")])
-
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(rows))
-
-    async def verify_force_join_channels(self, update):
-        channels = await db.get_global_force_join_channels()
-        if not channels:
-            await update.message.reply_text("🔐 No Force Join channels configured.", reply_markup=admin_keyboard())
-            return
-        results = await force_join_checker.verify_admin_channels(channels)
-        lines = ["🔎 MAIN BOT FORCE-JOIN CHECK\n"]
-        for row in results:
-            icon = "🟢" if row["ok"] else "🔴"
-            lines.append(f"{icon} {row['channel']} — {row['status']}")
-            if row.get("error"):
-                lines.append(f"   {row['error']}")
-        lines.append("\nOnly the MAIN bot needs to be admin in these channels.")
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
-
-    async def save_force_join_channel(self, update, context):
-        value = (update.message.text or "").strip()
-        context.user_data.clear()
-        if not value:
-            await update.message.reply_text("❌ Send a channel username such as @MyChannel.", reply_markup=admin_keyboard())
-            return
-
-        verification = await force_join_checker.verify_admin_channels([value])
-        if not verification or not verification[0]["ok"]:
-            error = verification[0].get("error") if verification else None or "Main bot cannot access this channel."
-            await update.message.reply_text(
-                "❌ Channel was NOT added.\n\nMake the MAIN bot an administrator in the channel first.\n"
-                f"Details: {error}",
-                reply_markup=admin_keyboard(),
-            )
-            return
-
-        ok, channels = await db.add_global_force_join_channel(value)
-        if not ok:
-            await update.message.reply_text(
-                "❌ Channel was not added. It may already exist or the 5-channel limit was reached.",
-                reply_markup=admin_keyboard(),
-            )
-            return
-
-        await update.message.reply_text(
-            "✅ Channel added to GLOBAL Force Join.\n\nOnly the MAIN bot checks membership.\n"
-            f"Configured channels: {len(channels)}/5",
-            reply_markup=admin_keyboard(),
-        )
-
-    async def save_max_video(self, update, context):
-        value = (update.message.text or "").strip()
-        try:
-            minutes = int(value)
-            if minutes < 1 or minutes > 120:
-                raise ValueError
-            Config.MAX_VIDEO_DURATION_SECONDS = minutes * 60
-            context.user_data.clear()
-            await update.message.reply_text(f"✅ Max video duration set to {minutes} minutes.", reply_markup=admin_keyboard())
-        except ValueError:
-            await update.message.reply_text("❌ Send a number from 1 to 120.")
-
-    async def save_max_file(self, update, context):
-        value = (update.message.text or "").strip()
-        try:
-            mb = int(value)
-            if mb < 5 or mb > 2000:
-                raise ValueError
-            Config.MAX_FILE_SIZE_MB = mb
-            context.user_data.clear()
-            await update.message.reply_text(f"✅ Max file size set to {mb} MB.", reply_markup=admin_keyboard())
-        except ValueError:
-            await update.message.reply_text("❌ Send a number from 5 to 2000.")
-
-    async def search_bot_prompt(self, update, context):
-        context.user_data["state"] = "search_bot"
-        await update.message.reply_text("🔎 Send bot username or bot ID:")
-
-    async def search_bot(self, update, context):
-        results = await db.search_bots(update.message.text or "")
-        context.user_data.clear()
-        if not results:
-            await update.message.reply_text("❌ No bot found.", reply_markup=admin_keyboard())
-            return
-        buttons = []
-        text = "🔎 SEARCH RESULTS\n\n"
-        for bot in results[:30]:
-            bid = bot["bot_id"]
-            name = bot.get("username") or "N/A"
-            text += f"@{name} — {bot.get('status')}\n"
-            buttons.append([InlineKeyboardButton(f"⚙️ @{name}", callback_data=f"manage:{bid}")])
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def bot_errors(self, update):
-        bots = await db.get_all_bots()
-        lines = ["🚨 BOT ERRORS\n"]
-        for bot in bots:
-            if bot.get("last_error"):
-                lines.append(f"@{bot.get('username', 'N/A')}: {bot['last_error']}")
-        if len(lines) == 1:
-            lines.append("No saved bot errors.")
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
-
-    async def user_export(self, update):
-        users = await db.get_all_main_users()
-        text = "USER_ID,USERNAME,FULL_NAME\n"
-        for user in users:
-            text += f"{user.get('user_id')},{user.get('username', '')},{str(user.get('full_name', '')).replace(',', ' ')}\n"
-        if len(text) > 3900:
-            text = text[:3900] + "\n..."
-        await update.message.reply_text("📋 USER EXPORT\n\n" + text, reply_markup=admin_keyboard())
-
-    async def clear_downloads(self, update):
-        await update.message.reply_text(
-            "⚠️ Delete ALL download history?",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("❌ Cancel", callback_data="noop"),
-                    InlineKeyboardButton("🗑 YES, CLEAR", callback_data="clear:downloads"),
-                ]
-            ]),
-        )
-
-    async def clear_pending(self, update):
-        await update.message.reply_text(
-            "⚠️ Clear all pending force-join downloads?",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("❌ Cancel", callback_data="noop"),
-                    InlineKeyboardButton("🧹 CLEAR", callback_data="clear:pending"),
-                ]
-            ]),
-        )
-
-    async def reload_bots(self, update):
-        await update.message.reply_text("♻️ Reloading active managed bots...")
-        await bot_manager.stop_all()
-        await bot_manager.load_and_start_all()
-        await update.message.reply_text("✅ Managed bots reloaded.", reply_markup=admin_keyboard())
-
-    async def perform_broadcast(self, message, context, bot_id=None):
-        bots = await db.get_all_bots() if bot_id is None else [await db.get_bot(bot_id)]
-        bots = [b for b in bots if b]
-        sent = failed = skipped = 0
-        media_path = media_kind = None
-        caption = message.caption or ""
-
-        try:
-            if message.photo:
-                media_kind = "photo"
-                media_path = tempfile.mktemp(suffix=".jpg")
-                f = await message.photo[-1].get_file()
-                await f.download_to_drive(media_path)
-            elif message.video:
-                media_kind = "video"
-                media_path = tempfile.mktemp(suffix=".mp4")
-                f = await message.video.get_file()
-                await f.download_to_drive(media_path)
-            elif message.document:
-                media_kind = "document"
-                media_path = tempfile.mktemp()
-                f = await message.document.get_file()
-                await f.download_to_drive(media_path)
-            elif message.audio:
-                media_kind = "audio"
-                media_path = tempfile.mktemp(suffix=".mp3")
-                f = await message.audio.get_file()
-                await f.download_to_drive(media_path)
-            elif message.voice:
-                media_kind = "voice"
-                media_path = tempfile.mktemp(suffix=".ogg")
-                f = await message.voice.get_file()
-                await f.download_to_drive(media_path)
-            elif message.animation:
-                media_kind = "animation"
-                media_path = tempfile.mktemp(suffix=".mp4")
-                f = await message.animation.get_file()
-                await f.download_to_drive(media_path)
-
-            for bot in bots:
-                bid = bot["bot_id"]
-                handler = bot_manager.running_bots.get(bid)
-                if not handler:
-                    skipped += 1
-                    continue
-                users = await db.get_all_bot_users(bid)
-                for user in users:
-                    uid = user.get("user_id")
-                    if not uid:
-                        continue
-                    try:
-                        if media_kind == "photo":
-                            with open(media_path, "rb") as f:
-                                await handler.app.bot.send_photo(uid, photo=f, caption=caption or None)
-                        elif media_kind == "video":
-                            with open(media_path, "rb") as f:
-                                await handler.app.bot.send_video(uid, video=f, caption=caption or None)
-                        elif media_kind == "document":
-                            with open(media_path, "rb") as f:
-                                await handler.app.bot.send_document(uid, document=f, caption=caption or None)
-                        elif media_kind == "audio":
-                            with open(media_path, "rb") as f:
-                                await handler.app.bot.send_audio(uid, audio=f, caption=caption or None)
-                        elif media_kind == "voice":
-                            with open(media_path, "rb") as f:
-                                await handler.app.bot.send_voice(uid, voice=f, caption=caption or None)
-                        elif media_kind == "animation":
-                            with open(media_path, "rb") as f:
-                                await handler.app.bot.send_animation(uid, animation=f, caption=caption or None)
-                        else:
-                            await handler.app.bot.send_message(uid, text=(message.text or message.caption or ""))
-                        sent += 1
-                    except (Forbidden, TelegramError):
-                        failed += 1
-                    except Exception:
-                        failed += 1
-                    await asyncio.sleep(0.05)
-
-            context.user_data.clear()
-            await message.reply_text(
-                "📢 Broadcast finished.\n"
-                f"🟢 Sent: {sent}\n🔴 Failed: {failed}\n🟡 Offline bots skipped: {skipped}",
-                reply_markup=admin_keyboard(),
-            )
-        finally:
-            if media_path:
-                try:
-                    os.remove(media_path)
-                except OSError:
-                    pass
-
-    async def handle_admin_media(self, update, context):
-        if not update.effective_user or not is_admin(update.effective_user.id) or not update.message:
-            return
-        state = context.user_data.get("state")
-        if state == "broadcast_all":
-            await self.perform_broadcast(update.message, context)
-        elif state == "broadcast_bot":
-            await self.perform_broadcast(update.message, context, context.user_data.get("broadcast_bot_id"))
-
-    async def broadcast_all_prompt(self, update, context):
-        context.user_data["state"] = "broadcast_all"
-        await update.message.reply_text("📢 Send the text, photo, video, audio, document or voice you want to broadcast to ALL active managed bots.")
-
-    async def broadcast_bot_prompt(self, update):
-        await self.choose_bot(update, "broadcast")
-
-    async def manage_bot_menu(self, query, bot_id):
-        bot = await db.get_bot(bot_id)
-        if not bot:
-            await query.edit_message_text("❌ Bot not found.")
-            return
-        status = bot.get("status", "unknown")
-        toggle = InlineKeyboardButton("⏹ Stop", callback_data=f"stop:{bot_id}") if status == "active" else InlineKeyboardButton("▶️ Start", callback_data=f"start:{bot_id}")
-
-        await query.edit_message_text(
-            "⚙️ BOT MANAGEMENT\n\n"
-            f"@{bot.get('username', 'N/A')}\nID: {bot_id}\nStatus: {status}",
-            reply_markup=InlineKeyboardMarkup([
-                [toggle, InlineKeyboardButton("🔄 Restart", callback_data=f"restart:{bot_id}")],
-                [InlineKeyboardButton("📊 Stats", callback_data=f"bstats:{bot_id}")],
-                [InlineKeyboardButton("👥 Users", callback_data=f"bu:{bot_id}")],
-                [InlineKeyboardButton("🗑 Delete", callback_data=f"confirmdel:{bot_id}")],
-                [InlineKeyboardButton("🔙 All Bots", callback_data="allbots")],
-            ]),
-        )
-
-    async def show_bot_stats(self, query, bot_id):
-        bot = await db.get_bot(bot_id)
-        if not bot:
-            await query.edit_message_text("❌ Bot not found.")
-            return
-        stats = await db.get_bot_stats(bot_id)
-        await query.edit_message_text(
-            "📊 BOT STATISTICS\n\n"
-            f"@{bot.get('username', 'N/A')}\n🟢 {bot.get('status')}\n👤 Owner: {bot.get('owner_id')}\n\n"
-            f"👥 Users: {stats['total_users']}\n📥 Downloads: {stats['total_downloads']}\n"
-            f"🎬 Videos: {stats['videos']}\n🎵 Audio: {stats['audio']}\n🖼 Photos: {stats['photos']}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 All Bots", callback_data="allbots")]]),
-        )
-
-    async def start_managed_bot(self, query, bot_id):
-        bot = await db.get_bot(bot_id)
-        if not bot:
-            await query.answer("Bot not found", show_alert=True)
-            return
-        token = bot.get("token")
-        if not token:
-            await query.answer("❌ Bot token is missing in database.", show_alert=True)
-            return
-        ok = await bot_manager.start_bot_instance(bot_id, token)
-        if ok:
-            await db.update_bot_status(bot_id, "active")
-        await query.answer("🟢 Started" if ok else "🔴 Start failed", show_alert=not ok)
-        await self.manage_bot_menu(query, bot_id)
-
-    async def stop_managed_bot(self, query, bot_id):
-        await bot_manager.stop_bot_instance(bot_id)
-        await db.update_bot_status(bot_id, "stopped")
-        await query.answer("⏹ Stopped")
-        await self.manage_bot_menu(query, bot_id)
-
-    async def restart_managed_bot(self, query, bot_id):
-        bot = await db.get_bot(bot_id)
-        if not bot:
-            await query.answer("Bot not found", show_alert=True)
-            return
-        token = bot.get("token")
-        if not token:
-            await query.answer("❌ Bot token is missing.", show_alert=True)
-            return
-        await bot_manager.stop_bot_instance(bot_id)
-        ok = await bot_manager.start_bot_instance(bot_id, token)
-        if ok:
-            await db.update_bot_status(bot_id, "active")
-        await query.answer("🔄 Restarted" if ok else "🔴 Restart failed", show_alert=not ok)
-        await self.manage_bot_menu(query, bot_id)
-
-    async def delete_managed_bot(self, query, bot_id):
-        await bot_manager.stop_bot_instance(bot_id)
-        await db.delete_bot(bot_id)
-        await query.edit_message_text("🗑 Bot deleted successfully.")
-
-    async def handle_text(self, update, context):
-        if not update.message or not update.effective_user:
-            return
-
-        uid = update.effective_user.id
-        text = update.message.text or ""
-        state = context.user_data.get("state")
-
-        if is_admin(uid):
-            
-            # --- CUSTOM PREMIUM STATES HANDLERS ADDED --- #
-            if state == "set_price":
-                await self.save_premium_price(update, context)
-                return
-
-            if state == "grant_premium_bot":
-                await self.save_grant_premium(update, context)
-                return
-            # --------------------------------------------- #
-
-            if state == "force_add":
-                await self.save_force_join_channel(update, context)
-                return
-            if state == "broadcast_all":
-                await self.perform_broadcast(update.message, context)
-                return
-            if state == "broadcast_bot":
-                await self.perform_broadcast(update.message, context, context.user_data.get("broadcast_bot_id"))
-                return
-            if state == "broadcast_preview":
-                await update.message.reply_text(
-                    "👀 BROADCAST PREVIEW\n\n" + ((update.message.text or update.message.caption or "").strip() or "[media message]"),
-                    reply_markup=admin_keyboard(),
-                )
-                context.user_data.clear()
-                return
-            if state == "search_bot":
-                await self.search_bot(update, context)
-                return
-            if state == "max_video":
-                await self.save_max_video(update, context)
-                return
-            if state == "max_file":
-                await self.save_max_file(update, context)
-                return
-
-        lang = await db.get_main_user_language(uid)
-        button = canonical_user_button(text)
-
-        if button == "create":
-            if not await db.is_bot_creation_enabled():
-                await update.message.reply_text(tr(lang, "creation_disabled"))
-            else:
-                await update.message.reply_text(
-                    tr(lang, "welcome_title") + "\n\n" + tr(lang, "instructions"),
-                    reply_markup=main_keyboard(uid, lang),
-                )
-            return
-
-        if button == "admin" and is_admin(uid):
-            await self.show_dashboard(update)
-            return
-
-        if button == "my_bots":
-            await self.show_my_bots(update)
-            return
-
-        if button == "premium":
-            await premium_command(update, context)
-            return
-
-        if button == "language":
-            await self.language_command(update, context)
-            return
-
-        if button == "help":
-            await update.message.reply_text(tr(lang, "help_text"))
-            return
-
-        if not is_admin(uid):
-            return
-
-        actions = {
-            "📊 Dashboard": lambda: self.show_dashboard(update),
-            "🤖 All Bots": lambda: self.show_all_bots(update),
-            "🔎 Search Bot": lambda: self.search_bot_prompt(update, context),
-            "👥 Users": lambda: self.show_users(update),
-            "👥 Bot Users": lambda: self.show_bot_users(update),
-            "👑 Bot Owners": lambda: self.show_bot_owners(update),
-            "📥 Downloads": lambda: self.show_downloads(update),
-            "📈 Download Stats": lambda: self.show_download_stats(update),
-            "❌ Failed Downloads": lambda: self.show_failed_downloads(update),
-            "🕘 Recent Downloads": lambda: self.show_recent_downloads(update),
-            "📢 Broadcast All": lambda: self.broadcast_all_prompt(update, context),
-            "📣 Broadcast Bot": lambda: self.broadcast_bot_prompt(update),
-            "👀 Broadcast Preview": lambda: self._prompt_simple(update, context, "broadcast_preview", "👀 Send text or media to preview broadcast:"),
-            "🔐 Force Join": lambda: self.force_join_menu(update),
-            "🔎 Force Join Check": lambda: self.verify_force_join_channels(update),
-            "⚙️ Bot Creation": lambda: self.creation_setting(update),
-            "▶️ Start Bot": lambda: self.choose_bot(update, "start"),
-            "⏹ Stop Bot": lambda: self.choose_bot(update, "stop"),
-            "🔄 Restart Bot": lambda: self.choose_bot(update, "restart"),
-            "🗑 Delete Bot": lambda: self.choose_bot(update, "confirmdel"),
-            "❤️ Bot Health": lambda: self.show_health(update),
-            "🚨 Bot Errors": lambda: self.bot_errors(update),
-            "♻️ Reload Bots": lambda: self.reload_bots(update),
-            "🛠 Maintenance": lambda: self.maintenance_setting(update),
-            "🧰 System Settings": lambda: self.system_settings(update),
-            "⏱ Max Video": lambda: self._prompt_simple(update, context, "max_video", "⏱ Send max video duration in minutes (1 to 120):"),
-            "📦 Max File": lambda: self._prompt_simple(update, context, "max_file", "📦 Send max file size in MB (5 to 2000):"),
-            "🌐 Default Language": lambda: self.language_command(update, context),
-            "📋 User Export": lambda: self.user_export(update),
-            "🤖 Bot Export": lambda: self.bot_export(update),
-            "🧹 Clear Downloads": lambda: self.clear_downloads(update),
-            "🧽 Clear Pending": lambda: self.clear_pending(update),
-            "🧼 Cleanup Temp": lambda: self.cleanup_temp(update),
-            "🗄 Database Status": lambda: self.database_status(update),
-            "📡 Queue Status": lambda: self.queue_status(update),
-            "⏲ Uptime": lambda: self.uptime_status(update),
-            "🔒 Security": lambda: self.security_status(update),
-            "🧑‍💼 Admin ID": lambda: self.admin_id_status(update),
-            "📊 Platform Stats": lambda: self.show_dashboard(update),
-            "🔄 Reset Settings": lambda: self.reset_settings(update),
-            "📜 Activity Log": lambda: self.activity_log(update),
-            "💾 Backup Info": lambda: self.backup_info(update),
-            "📦 Bot Capacity": lambda: self.bot_capacity(update),
-            "🔔 Notifications": lambda: self.notifications_status(update),
-            "ℹ️ About": lambda: update.message.reply_text("ℹ️ TG-Power SaaS Downloader Platform v3.0", reply_markup=admin_keyboard()),
-            "❓ Help": lambda: update.message.reply_text("❓ Admin Panel lets you control settings, bots, users, and broadcasts.", reply_markup=admin_keyboard()),
-            "🔃 Refresh": lambda: self.show_dashboard(update),
-            "🔙 User Panel": lambda: update.message.reply_text("🔙 User Panel active.", reply_markup=main_keyboard(uid, lang)),
-            "🧪 Test System": lambda: update.message.reply_text("🧪 System test OK.", reply_markup=admin_keyboard()),
-            "📍 Channel Settings": lambda: self.force_join_menu(update),
-            "⭐ Premium Center": lambda: admin_premium_center(update, context),
-
-            # --- SAXIDA PREMIUM BUTTONS (LAMBDA FUNCTIONS) --- #
-            "💰 Premium Prices": lambda: self._prompt_simple(update, context, "set_price", "💰 Send the new Premium Price (e.g., $5/month or 250 Stars):"),
-            "🎁 Grant Premium": lambda: self._prompt_simple(update, context, "grant_premium_bot", "🎁 Send Bot ID and Days separated by space (e.g. `12345678 30`):"),
-            # ------------------------------------------------- #
-
-            "⭐ Premium Bots": lambda: admin_premium_center(update, context),
-            "✏️ Premium Caption": lambda: admin_premium_center(update, context),
-            "🔘 Premium Buttons": lambda: admin_premium_center(update, context),
-            "📢 Premium Ads": lambda: admin_premium_center(update, context),
-            "📊 Premium Stats": lambda: admin_premium_center(update, context),
-        }
-
-        action = actions.get(text)
-        if action:
-            await action()
-
-    async def show_bot_owners(self, update):
-        bots = await db.get_all_bots()
-        owners = {}
-        for bot in bots:
-            oid = bot.get("owner_id", "Unknown")
-            owners[oid] = owners.get(oid, 0) + 1
-        lines = ["👑 BOT OWNERS\n"]
-        for oid, count in owners.items():
-            lines.append(f"• User ID {oid}: {count} bot(s)")
-        await update.message.reply_text("\n".join(lines), reply_markup=admin_keyboard())
-
-    async def show_failed_downloads(self, update):
-        failed = await db.downloads.find({"status": "failed"}).sort("timestamp", -1).limit(20).to_list(length=20)
-        lines = ["❌ RECENT FAILED DOWNLOADS\n"]
-        for item in failed:
-            lines.append(f"• Bot {item.get('bot_id')} | URL: {item.get('url')} | Err: {item.get('error')}")
-        if len(lines) == 1:
-            lines.append("No failed downloads.")
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
-
-    async def show_recent_downloads(self, update):
-        recent = await db.downloads.find().sort("timestamp", -1).limit(20).to_list(length=20)
-        lines = ["🕘 RECENT DOWNLOADS\n"]
-        for item in recent:
-            lines.append(f"• {item.get('status')} | Bot {item.get('bot_id')} | {item.get('media_type')} | {item.get('url')}")
-        if len(lines) == 1:
-            lines.append("No downloads found.")
-        await update.message.reply_text("\n".join(lines)[:4000], reply_markup=admin_keyboard())
-
-    async def bot_export(self, update):
-        bots = await db.get_all_bots()
-        text = "BOT_ID,USERNAME,OWNER_ID,STATUS\n"
-        for bot in bots:
-            text += f"{bot.get('bot_id')},{bot.get('username', '')},{bot.get('owner_id')},{bot.get('status')}\n"
-        if len(text) > 3900:
-            text = text[:3900] + "\n..."
-        await update.message.reply_text("🤖 BOT EXPORT\n\n" + text, reply_markup=admin_keyboard())
-
-    async def cleanup_temp(self, update):
-        await update.message.reply_text("🧼 Temporary files cleaned.", reply_markup=admin_keyboard())
-
-    async def database_status(self, update):
-        await update.message.reply_text(f"🗄 DATABASE STATUS\n\nConnected: {'Yes' if db.db is not None else 'No'}", reply_markup=admin_keyboard())
-
-    async def queue_status(self, update):
-        await update.message.reply_text("📡 QUEUE STATUS\n\nActive tasks: 0", reply_markup=admin_keyboard())
-
-    async def uptime_status(self, update):
-        up = datetime.now(timezone.utc) - (self.started_at or datetime.now(timezone.utc))
-        await update.message.reply_text(f"⏲ UPTIME\n\n{str(up).split('.')[0]}", reply_markup=admin_keyboard())
-
-    async def security_status(self, update):
-        await update.message.reply_text("🔒 SECURITY\n\nNo issues detected.", reply_markup=admin_keyboard())
-
-    async def admin_id_status(self, update):
-        ids = list(admin_ids())
-        await update.message.reply_text(f"🧑‍💼 ADMIN IDs\n\n{ids}", reply_markup=admin_keyboard())
-
-    async def reset_settings(self, update):
-        await update.message.reply_text("🔄 Settings are at defaults.", reply_markup=admin_keyboard())
-
-    async def activity_log(self, update):
-        await update.message.reply_text("📜 ACTIVITY LOG\n\nSystem running smoothly.", reply_markup=admin_keyboard())
-
-    async def backup_info(self, update):
-        await update.message.reply_text("💾 BACKUP INFO\n\nMongoDB automatically persists data.", reply_markup=admin_keyboard())
-
-    async def bot_capacity(self, update):
-        await update.message.reply_text(f"📦 BOT CAPACITY\n\nCurrently running: {len(bot_manager.running_bots)}", reply_markup=admin_keyboard())
-
-    async def notifications_status(self, update):
-        await update.message.reply_text("🔔 NOTIFICATIONS\n\nSystem notifications enabled.", reply_markup=admin_keyboard())
-
-    async def _prompt_simple(self, update, context, state_name, text):
-        context.user_data["state"] = state_name
-        await update.message.reply_text(text)
-
-    async def show_my_bots(self, update):
-        user_id = update.effective_user.id
-        lang = await db.get_main_user_language(user_id)
-        bots = await db.get_user_bots(user_id)
-        if not bots:
-            await update.message.reply_text("🤖 You haven't created any bots yet.\nUse ➕ Create New Bot to make one!", reply_markup=main_keyboard(user_id, lang))
-            return
-
-        lines = ["🤖 YOUR BOTS\n"]
-        buttons = []
-        for bot in bots:
-            bid = bot.get("bot_id")
-            username = bot.get("username") or "N/A"
-            status = bot.get("status", "unknown")
-            icon = "🟢" if status == "active" else "🔴"
-            lines.append(f"{icon} @{username} — {status}")
-            buttons.append([InlineKeyboardButton(f"⚙️ @{username}", callback_data=f"mybot:{bid}")])
-
-        await update.message.reply_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def handle_managed_bot_created(self, update, context):
-        if not update.effective_user or not update.message:
-            return
-        owner_id = update.effective_user.id
-        lang = await db.get_main_user_language(owner_id)
-
-        if not await db.is_bot_creation_enabled():
-            await update.message.reply_text(tr(lang, "creation_disabled"), reply_markup=main_keyboard(owner_id, lang))
-            return
-
-        service_msg = update.message.managed_bot_created
-        if not service_msg:
-            return
-
-        managed_bot = getattr(service_msg, "bot", None)
-        if managed_bot is None:
-            logger.error("ManagedBotCreated has no bot.")
-            await update.message.reply_text(tr(lang, "token_missing"))
-            return
-
-        managed_bot_id = getattr(managed_bot, "id", None)
-        if not managed_bot_id:
-            logger.error("Managed bot ID missing.")
-            await update.message.reply_text(tr(lang, "token_missing"))
-            return
-
-        token = await self.get_managed_bot_token(context, managed_bot_id)
-        if not token:
-            await update.message.reply_text(tr(lang, "token_missing"), reply_markup=main_keyboard(owner_id, lang))
-            return
-
-        bot_info = None
-        temp_app = None
-        try:
-            temp_app = Application.builder().token(token).build()
-            await temp_app.initialize()
-            bot_info = await temp_app.bot.get_me()
-        except Exception:
-            logger.exception("Failed to validate managed bot token.")
-            await update.message.reply_text("❌ Invalid bot token received.", reply_markup=main_keyboard(owner_id, lang))
-            return
-        finally:
-            if temp_app is not None:
-                try:
-                    await temp_app.shutdown()
-                except Exception:
-                    pass
-
-        bot_id = str(bot_info.id)
-        username = bot_info.username or ""
-
-        # By default create without premium
-        await db.save_bot(
-            bot_id=bot_id,
-            owner_id=owner_id,
-            token=token,
-            username=username,
-            title=bot_info.first_name or "",
-        )
-
-        ok = await bot_manager.start_bot_instance(bot_id, token)
-        if ok:
-            try:
-                await db.update_bot_status(bot_id, "active")
-            except Exception:
-                logger.exception("Could not update bot status.")
-            await update.message.reply_text(tr(lang, "bot_online", username=username), reply_markup=main_keyboard(owner_id, lang))
-        else:
-            try:
-                await db.update_bot_status(bot_id, "failed")
-            except Exception:
-                pass
-            await update.message.reply_text(tr(lang, "bot_saved_failed"), reply_markup=main_keyboard(owner_id, lang))
-
-    async def get_managed_bot_token(self, context, managed_bot_id):
-        try:
-            managed_bot_id = int(managed_bot_id)
-            token = await context.bot.get_managed_bot_token(user_id=managed_bot_id)
-            if token:
-                token = str(token).strip()
-                if token:
-                    logger.info("✅ Managed bot token retrieved for bot %s", managed_bot_id)
-                    return token
-            logger.error("❌ Telegram returned an empty managed bot token for %s", managed_bot_id)
-            return ""
-        except TelegramError as exc:
-            logger.exception("❌ Telegram error while retrieving managed bot token for %s: %s", managed_bot_id, exc)
-            return ""
-        except Exception:
-            logger.exception("❌ Failed to retrieve managed bot token for %s.", managed_bot_id)
-            return ""
-
-    async def handle_managed_bot_updated(self, update, context):
-        managed = update.managed_bot
-        if not managed:
-            return
-        managed_bot = getattr(managed, "bot", None)
-        if not managed_bot:
-            return
-        managed_bot_id = getattr(managed_bot, "id", None)
-        if not managed_bot_id:
-            return
-
-        bot_id = str(managed_bot_id)
-        record = await db.get_bot(bot_id)
-        if not record:
-            logger.warning("Managed bot update received for unknown bot %s.", bot_id)
-            return
-
-        token = await self.get_managed_bot_token(context, managed_bot_id)
-        if not token:
-            logger.error("Managed bot %s token update received but token could not be retrieved.", bot_id)
-            return
-
-        username = getattr(managed_bot, "username", None) or record.get("username") or ""
-        title = getattr(managed_bot, "first_name", None) or record.get("title") or ""
-
-        await db.save_bot(
-            bot_id=bot_id,
-            owner_id=record.get("owner_id"),
-            token=token,
-            username=username,
-            title=title,
-        )
-
-        await bot_manager.stop_bot_instance(bot_id)
-        started = await bot_manager.start_bot_instance(bot_id, token)
-        await db.update_bot_status(bot_id, "active" if started else "failed")
-        logger.info("Managed bot %s token/state refreshed. Started=%s", bot_id, started)
-
-    async def handle_callback(self, update, context):
-        query = update.callback_query
-        if not query:
-            return
+            from database import client
+            await client.admin.command("ping")
+            return "🗄 DATABASE STATUS\n\n🟢 MongoDB ping successful."
+        except Exception as exc:
+            return f"🔴 MongoDB error: {str(exc)[:500]}"
+    if action == "queue":
+        return "📡 QUEUE STATUS\n\nDownloads use the downloader executor; no stuck queue is stored in MongoDB."
+    if action == "security":
+        return "🔒 SECURITY\n\nAdmin access is restricted to ADMIN_IDS. Managed bot tokens are never shown to users."
+    if action == "admin_ids":
+        return "🧑‍💼 ADMIN IDS\n\n" + ", ".join(map(str, sorted(config.ADMIN_IDS)))
+    if action == "activity":
+        rows = await __import__('database').logs_col.find().sort("created_at", -1).to_list(length=20)
+        return "📜 ACTIVITY LOG\n\n" + ("\n".join(str({k:v for k,v in r.items() if k != '_id'})[:300] for r in rows) or "No activity.")
+    if action == "backup":
+        return "💾 BACKUP INFO\n\nMongoDB is the persistent store. Export actions are available in this admin panel."
+    if action == "notifications":
+        return "🔔 NOTIFICATIONS\n\nSystem notifications are represented through activity logs and bot status events."
+    if action == "about":
+        return "ℹ️ TG-Power\n\nMain controller + managed downloader bots + Premium administration."
+    if action == "help_admin":
+        return "❓ ADMIN HELP\n\nUse Next/Previous to access all 50 controls. Premium controls manage prices, active Premium bots and grants."
+    if action == "health":
+        from bot_manager import active_bots
+        return f"❤️ BOT HEALTH\n\nRunning managed bots: {len(active_bots)}\nDB bots: {await bots_col.count_documents({})}"
+    if action == "recent":
+        rows = await downloads_col.find().sort("timestamp", -1).to_list(length=20)
+        return "🕘 RECENT DOWNLOADS\n\n" + ("\n".join(f"{r.get('bot_username','?')} | {r.get('platform','?')} | {r.get('timestamp','?')}" for r in rows) or "No downloads.")
+    if action == "failed_downloads":
+        rows = await downloads_col.find({"status":"failed"}).sort("timestamp", -1).to_list(length=20)
+        return "❌ FAILED DOWNLOADS\n\n" + ("\n".join(str({k:v for k,v in r.items() if k != '_id'})[:300] for r in rows) or "No failed records.")
+    if action == "user_growth":
+        rows = await users_col.find().sort("created_at", -1).to_list(length=20)
+        return f"👥 USER GROWTH\n\nLatest recorded users: {len(rows)}\nTotal: {await users_col.count_documents({})}"
+    if action == "download_growth":
+        rows = await downloads_col.find().sort("timestamp", -1).to_list(length=100)
+        return f"📥 DOWNLOAD GROWTH\n\nRecent sample: {len(rows)}\nTotal: {await downloads_col.count_documents({})}"
+    if action == "limits":
+        return f"🎛 CREATION LIMITS\n\nMax bots/user: {getattr(config,'MAX_BOTS_PER_USER',5)}"
+    if action == "test":
+        from database import client
+        await client.admin.command("ping")
+        return "🧪 SYSTEM TEST\n\n🟢 Database OK\n🟢 Main application loaded\n🟢 Admin routing OK"
+    if action == "reset":
+        await settings_col.update_one({"key":"maintenance"},{"$set":{"value":False}},upsert=True)
+        await toggle_bot_creation(True)
+        return "🔄 Safe settings reset: maintenance OFF, bot creation ON."
+    return None
+
+
+@main_app.on_callback_query()
+async def callback_handler(client, query: CallbackQuery):
+    uid = query.from_user.id
+    data = query.data or ""
+    try:
         await query.answer()
-        data = query.data or ""
-        user_id = update.effective_user.id if update.effective_user else 0
+    except Exception:
+        pass
 
-        if data.startswith("lang_"):
-            code = data.split("_", 1)[1]
-            if code not in USER_I18N:
-                code = "en"
-            await db.set_main_user_language(user_id, code)
-            try:
-                await query.edit_message_text(tr(code, "language_saved"))
-            except TelegramError:
-                pass
-            try:
-                await query.message.reply_text(tr(code, "welcome_title"), reply_markup=main_keyboard(user_id, code))
-            except Exception:
-                pass
-            return
+    if data == "back":
+        await query.message.edit_text("🏠 **Main Menu**", reply_markup=user_keyboard(uid))
+        return
 
-        if data.startswith("mybot:"):
-            bid = data.split(":", 1)[1]
-            bot = await db.get_bot(bid)
-            if bot and (bot.get("owner_id") == user_id or is_admin(user_id)):
-                stats = await db.get_bot_stats(bid)
-                await query.edit_message_text(f"🤖 @{bot.get('username')}\nStatus: {bot.get('status')}\n\n👥 Users: {stats['total_users']}\n📥 Downloads: {stats['total_downloads']}")
-            return
-
-        if not is_admin(user_id):
-            return
-
-        if data == "allbots":
-            await self.show_all_bots_from_callback(query)
-            return
-        if data.startswith("manage:"):
-            await self.manage_bot_menu(query, data.split(":", 1)[1])
-            return
-        if data.startswith("bstats:"):
-            await self.show_bot_stats(query, data.split(":", 1)[1])
-            return
-        if data.startswith("bu:"):
-            await self.show_bot_users_for(query, data.split(":", 1)[1])
-            return
-        if data.startswith("start:"):
-            await self.start_managed_bot(query, data.split(":", 1)[1])
-            return
-        if data.startswith("stop:"):
-            await self.stop_managed_bot(query, data.split(":", 1)[1])
-            return
-        if data.startswith("restart:"):
-            await self.restart_managed_bot(query, data.split(":", 1)[1])
-            return
-        if data.startswith("confirmdel:"):
-            bid = data.split(":", 1)[1]
-            await query.edit_message_text(
-                f"⚠️ Are you sure you want to delete bot ID {bid}?",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data=f"manage:{bid}"), InlineKeyboardButton("🗑 YES, DELETE", callback_data=f"delete:{bid}")]]),
+    if data == "create_bot":
+        if not await is_bot_creation_enabled():
+            await query.message.edit_text(
+                "🔴 **Bot creation is currently disabled.**",
+                reply_markup=user_keyboard(uid),
             )
             return
-        if data.startswith("delete:"):
-            await self.delete_managed_bot(query, data.split(":", 1)[1])
+        if not await can_create_bot(uid):
+            await query.message.edit_text(
+                "⛔ You do not have permission to create bots.",
+                reply_markup=user_keyboard(uid),
+            )
             return
-        if data.startswith("broadcast:"):
-            bid = data.split(":", 1)[1]
-            context.user_data["state"] = "broadcast_bot"
-            context.user_data["broadcast_bot_id"] = bid
-            await query.edit_message_text(f"📢 Send the message to broadcast to bot ID {bid}:")
-            return
-        if data.startswith("setting:creation:"):
-            val = data.split(":")[2] == "on"
-            await db.set_bot_creation_enabled(val)
-            await query.edit_message_text(f"⚙️ Bot creation is now {'🟢 ENABLED' if val else '🔴 DISABLED'}.")
-            return
-        if data.startswith("setting:maintenance:"):
-            val = data.split(":")[2] == "on"
-            await db.set_system_setting("maintenance_mode", val)
-            await query.edit_message_text(f"🛠 Maintenance mode is now {'🟢 ON' if val else '🔴 OFF'}.")
-            return
-        if data == "fj:add":
-            context.user_data["state"] = "force_add"
-            await query.edit_message_text("🔐 Send channel username (e.g. @MyChannel):")
-            return
-        if data == "fj:verify":
-            channels = await db.get_global_force_join_channels()
-            if not channels:
-                await query.edit_message_text("🔐 No Force Join channels configured.")
-                return
-            results = await force_join_checker.verify_admin_channels(channels)
-            lines = ["🔎 MAIN BOT FORCE-JOIN CHECK\n"]
-            for row in results:
-                icon = "🟢" if row["ok"] else "🔴"
-                lines.append(f"{icon} {row['channel']} — {row['status']}")
-                if row.get("error"):
-                    lines.append(f"   {row['error']}")
-            lines.append("\nOnly the MAIN bot needs to be admin in these channels.")
-            await query.edit_message_text("\n".join(lines)[:4000])
-            return
-        if data.startswith("fj:del:"):
-            idx = int(data.split(":")[2])
-            channels = await db.get_global_force_join_channels()
-            if 0 <= idx < len(channels):
-                await db.remove_global_force_join_channel(channels[idx])
-            await query.edit_message_text("✅ Channel removed from Global Force Join.")
-            return
-        if data == "fj:clear":
-            await db.clear_global_force_join_channels()
-            await query.edit_message_text("🧹 All Global Force Join channels removed.")
-            return
-        if data == "clear:downloads":
-            await db.downloads.delete_many({})
-            await query.edit_message_text("🗑 All download history cleared.")
-            return
-        if data == "clear:pending":
-            await db.pending_downloads.delete_many({})
-            await query.edit_message_text("🧹 All pending force-join downloads cleared.")
-            return
-        if data == "noop":
-            await query.edit_message_text("Action canceled.")
 
-    async def error_handler(self, update, context):
-        logger.error("Error handling update %s: %s", update, context.error)
+        count = await count_user_bots(uid)
+        maximum = getattr(config, "MAX_BOTS_PER_USER", 5)
+        if count >= maximum:
+            await query.message.edit_text(
+                f"⛔ Maximum {maximum} bots reached.",
+                reply_markup=user_keyboard(uid),
+            )
+            return
 
-main_bot = MainSaaSBot()
+        pending_create.add(uid)
+        await query.message.edit_text(
+            "🤖 **Create New Bot**\n\n"
+            "Send:\n`Bot Name | BotUsernameBot`\n\n"
+            "The username must end with `bot`.\n"
+            "Send /cancel to cancel."
+        )
+        return
+
+    if data == "my_bots":
+        bots = await get_user_bots(uid)
+        if not bots:
+            text = "📦 **My Bots**\n\nYou have no managed bots."
+        else:
+            lines = ["📦 **My Bots**", ""]
+            for bot in bots:
+                lines.append(
+                    f"🤖 @{bot.get('username', 'unknown')}\n"
+                    f"📡 {bot.get('status', 'unknown')}\n"
+                    f"👥 {bot.get('total_users', 0)} users\n"
+                    f"📥 {bot.get('total_downloads', 0)} downloads\n"
+                )
+            text = "\n".join(lines)
+        await query.message.edit_text(
+            text[:4000], reply_markup=user_keyboard(uid)
+        )
+        return
+
+    if data == "my_stats":
+        bots = await get_user_bots(uid)
+        users = sum(int(b.get("total_users", 0)) for b in bots)
+        downloads = sum(int(b.get("total_downloads", 0)) for b in bots)
+        await query.message.edit_text(
+            "📊 **My Statistics**\n\n"
+            f"🤖 Bots: {len(bots)}\n"
+            f"👥 Users: {users}\n"
+            f"📥 Downloads: {downloads}",
+            reply_markup=user_keyboard(uid),
+        )
+        return
+
+    if data == "help":
+        await query.message.edit_text(
+            "📚 **Help**\n\n"
+            "• Create a managed bot from this menu.\n"
+            "• Open your created bot and use /admin.\n"
+            "• Main admins can manage all bots and users.",
+            reply_markup=user_keyboard(uid),
+        )
+        return
+
+    if data == "admin":
+        if uid not in config.ADMIN_IDS:
+            return
+        await query.message.edit_text(
+            "👑 **Main Admin Panel**", reply_markup=admin_keyboard()
+        )
+        return
+
+    if uid not in config.ADMIN_IDS or not data.startswith("admin_"):
+        return
+
+    if data.startswith("admin_page_"):
+        try:
+            page = int(data.rsplit("_", 1)[1])
+        except ValueError:
+            page = 0
+        await query.message.edit_text("👑 MAIN ADMIN PANEL", reply_markup=admin_keyboard(page))
+        return
+
+    simple_action = data[6:]
+    if simple_action == "main_menu":
+        await query.message.edit_text("🏠 Main Menu", reply_markup=user_keyboard(uid))
+        return
+    if simple_action == "broadcast":
+        pending_broadcast[uid] = "main"
+        await query.message.edit_text("📢 Send the message to broadcast. Use /cancel to cancel.")
+        return
+    if simple_action == "creation":
+        enabled = await is_bot_creation_enabled()
+        await query.message.edit_text(f"🔐 BOT CREATION\n\nStatus: {'🟢 ENABLED' if enabled else '🔴 DISABLED'}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🟢 Enable", callback_data="creation_on"), InlineKeyboardButton("🔴 Disable", callback_data="creation_off")],[InlineKeyboardButton("🔙 Admin", callback_data="admin")]]))
+        return
+    if simple_action == "reload":
+        from bot_manager import shutdown_all_bots, init_all_bots
+        await shutdown_all_bots()
+        result = await init_all_bots()
+        await query.message.edit_text(f"♻️ Reload complete\n\nStarted: {result['started']}\nFailed: {result['failed']}\nSkipped: {result['skipped']}", reply_markup=admin_keyboard(3))
+        return
+    if simple_action == "start_all":
+        from bot_manager import init_all_bots
+        result = await init_all_bots()
+        await query.message.edit_text(f"▶️ Start All\n\nStarted: {result['started']}\nFailed: {result['failed']}", reply_markup=admin_keyboard(3))
+        return
+    if simple_action == "stop_all":
+        from bot_manager import shutdown_all_bots
+        await shutdown_all_bots()
+        await query.message.edit_text("⏹ All managed bots stopped.", reply_markup=admin_keyboard(3))
+        return
+    if simple_action == "grant_premium":
+        await query.message.edit_text("🎁 GRANT PREMIUM\n\nUse /grant_premium BOT_USERNAME DAYS\nExample: /grant_premium MyDownloaderBot 30", reply_markup=admin_keyboard(1))
+        return
+    if simple_action == "revoke_premium":
+        await query.message.edit_text("🚫 REVOKE PREMIUM\n\nUse /revoke_premium BOT_USERNAME", reply_markup=admin_keyboard(1))
+        return
+    if simple_action == "max_video":
+        await query.message.edit_text(f"⏱ MAX VIDEO\n\n{getattr(config,'MAX_VIDEO_DURATION_SECONDS',1800)//60} minutes.\nSet MAX_VIDEO_DURATION_SECONDS in Render to change it.", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "max_file":
+        await query.message.edit_text(f"📦 MAX FILE\n\n{getattr(config,'MAX_FILE_SIZE_MB',2000)} MB.\nSet MAX_FILE_SIZE_MB in Render to change it.", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "language":
+        await query.message.edit_text("🌐 DEFAULT LANGUAGE\n\nManaged bots support English, Soomaali, Arabic, Spanish and additional languages.", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "export_users":
+        total = await users_col.count_documents({})
+        await query.message.edit_text(f"📋 USER EXPORT\n\nUsers available for export: {total}\nUse the database export outside Telegram for large datasets.", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "export_bots":
+        total = await bots_col.count_documents({})
+        await query.message.edit_text(f"🤖 BOT EXPORT\n\nBots available for export: {total}", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "clear_downloads":
+        await downloads_col.delete_many({})
+        await query.message.edit_text("🧹 Download history cleared.", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "clear_logs":
+        await __import__('database').logs_col.delete_many({})
+        await query.message.edit_text("🧽 Activity logs cleared.", reply_markup=admin_keyboard(2))
+        return
+    if simple_action == "uptime":
+        import time as _time
+        await query.message.edit_text(f"⏲ UPTIME\n\nProcess uptime: {_time.monotonic():.0f}s since monotonic origin.", reply_markup=admin_keyboard(3))
+        return
+    if simple_action == "premium_prices":
+        await query.message.edit_text(await _admin_text("premium_prices"), reply_markup=admin_keyboard(1))
+        return
+    if simple_action == "premium_bots":
+        await query.message.edit_text((await _admin_text("premium_bots"))[:4000], reply_markup=admin_keyboard(1))
+        return
+    if simple_action == "premium_stats":
+        await query.message.edit_text(await _admin_text("premium_stats"), reply_markup=admin_keyboard(1))
+        return
+    if simple_action == "premium_settings":
+        await query.message.edit_text(await _admin_text("premium_settings"), reply_markup=admin_keyboard(1))
+        return
+
+    if data == "admin_stats":
+        stats = await get_main_stats()
+        await query.message.edit_text(
+            "📊 **Main Statistics**\n\n"
+            f"👥 Users: {stats.get('users', 0)}\n"
+            f"🤖 Bots: {stats.get('bots', 0)}\n"
+            f"📥 Downloads: {stats.get('downloads', 0)}",
+            reply_markup=admin_keyboard(),
+        )
+        return
+
+    if data == "admin_bots":
+        try:
+            from database import bots_col
+            bots = await bots_col.find(
+                {"status": {"$ne": "deleted"}}
+            ).sort("created_at", -1).to_list(length=100)
+
+            if not bots:
+                text = "🤖 **All Managed Bots**\n\nNo bots found."
+            else:
+                text = "\n".join(
+                    ["🤖 **All Managed Bots**", ""] +
+                    [
+                        f"@{b.get('username', 'unknown')} | "
+                        f"{b.get('status', 'unknown')} | "
+                        f"Owner: {b.get('owner_id', 'unknown')}"
+                        for b in bots
+                    ]
+                )
+            await query.message.edit_text(text[:4000], reply_markup=admin_keyboard())
+        except Exception as exc:
+            await query.message.edit_text(
+                f"❌ Could not load bots:\n`{str(exc)[:1000]}`",
+                reply_markup=admin_keyboard(),
+            )
+        return
+
+    if data == "admin_users":
+        try:
+            from database import users_col
+            total = await users_col.count_documents({})
+            await query.message.edit_text(
+                f"👥 **Users:** {total}", reply_markup=admin_keyboard()
+            )
+        except Exception as exc:
+            await query.message.edit_text(
+                f"❌ `{str(exc)[:1000]}`", reply_markup=admin_keyboard()
+            )
+        return
+
+    if data == "admin_creation":
+        enabled = await is_bot_creation_enabled()
+        await query.message.edit_text(
+            "🔐 **Bot Creation**\n\n"
+            f"Status: {'🟢 ENABLED' if enabled else '🔴 DISABLED'}",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🟢 Enable", callback_data="creation_on"),
+                    InlineKeyboardButton("🔴 Disable", callback_data="creation_off"),
+                ],
+                [InlineKeyboardButton("🔙 Back", callback_data="admin")],
+            ]),
+        )
+        return
+
+    if data == "creation_on":
+        await toggle_bot_creation(True)
+        await query.message.edit_text(
+            "🟢 Bot creation enabled.", reply_markup=admin_keyboard()
+        )
+        return
+
+    if data == "creation_off":
+        await toggle_bot_creation(False)
+        await query.message.edit_text(
+            "🔴 Bot creation disabled.", reply_markup=admin_keyboard()
+        )
+        return
+
+    if data == "admin_broadcast":
+        pending_broadcast[uid] = "main"
+        await query.message.edit_text(
+            "📢 **Broadcast**\n\n"
+            "Send the message you want to broadcast.\n"
+            "Use /cancel to cancel."
+        )
+
+@main_app.on_message(filters.private & filters.command("grant_premium"))
+async def grant_premium_command(client, message):
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) != 3:
+        await message.reply_text("Usage: /grant_premium BOT_USERNAME DAYS")
+        return
+    try:
+        days = int(parts[2])
+        until = await grant_premium(parts[1], days, message.from_user.id)
+        await message.reply_text(f"🎁 Premium granted to @{parts[1].lstrip('@')} until {until}")
+    except Exception as exc:
+        await message.reply_text(f"❌ Grant failed: {str(exc)[:500]}")
+
+@main_app.on_message(filters.private & filters.command("revoke_premium"))
+async def revoke_premium_command(client, message):
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) != 2:
+        await message.reply_text("Usage: /revoke_premium BOT_USERNAME")
+        return
+    ok = await revoke_premium(parts[1])
+    await message.reply_text("🚫 Premium revoked." if ok else "❌ Bot not found.")
+
+@main_app.on_message(filters.private & filters.command("premium_price"))
+async def premium_price_command(client, message):
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) != 3 or parts[1] not in {"1m","3m","6m","1y"}:
+        await message.reply_text("Usage: /premium_price 1m 100")
+        return
+    prices = await get_prices()
+    prices[parts[1]] = int(parts[2])
+    await __import__('database').db.set_premium_prices(prices)
+    await message.reply_text(f"✅ {parts[1]} Premium price set to {parts[2]} XTR.")
+
+@main_app.on_message(
+    filters.private & ~filters.command(["start", "admin", "cancel"])
+)
+async def text_handler(client, message):
+    uid = message.from_user.id
+    await save_user(message)
+
+    if uid in pending_create:
+        pending_create.discard(uid)
+        raw = (message.text or "").strip()
+
+        if "|" not in raw:
+            await message.reply_text(
+                "❌ Invalid format.\n\n"
+                "Use:\n`My Downloader | MyDownloaderBot`"
+            )
+            return
+
+        bot_name, bot_username = [x.strip() for x in raw.split("|", 1)]
+        status = await message.reply_text("⏳ Creating your bot...")
+
+        try:
+            from bot_creator import create_bot_via_botfather
+            from database import register_bot
+            from bot_manager import start_managed_bot
+
+            token, final_username = await create_bot_via_bot(
+                bot_name, bot_username
+            )
+
+            await register_bot(
+                uid, token, bot_name, final_username, None
+            )
+
+            started = await start_managed_bot(
+                token, final_username, uid
+            )
+            if not started:
+                raise RuntimeError("Bot was created but could not be started.")
+
+            await log_event(
+                "bot_created",
+                owner_id=uid,
+                bot_username=final_username,
+            )
+
+            await status.edit_text(
+                "✅ **Bot Created Successfully!**\n\n"
+                f"🤖 @{final_username}\n"
+                f"🔗 https://t.me/{final_username}\n\n"
+                "Open the bot and send /admin.",
+                reply_markup=user_keyboard(uid),
+            )
+        except Exception as exc:
+            logger.exception("Bot creation failed")
+            await status.edit_text(
+                "❌ **Bot Creation Failed**\n\n"
+                f"`{str(exc)[:1200]}`",
+                reply_markup=user_keyboard(uid),
+            )
+        return
+
+    mode = pending_broadcast.get(uid)
+    if mode and uid in config.ADMIN_IDS:
+        pending_broadcast.pop(uid, None)
+        await message.reply_text("📢 Broadcast started...")
+
+        try:
+            from database import users_col
+            users = await users_col.find({}).to_list(length=200000)
+            sent = failed = 0
+
+            for user in users:
+                target = user.get("user_id")
+                if not target:
+                    continue
+                try:
+                    await message.copy(target)
+                    sent += 1
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    failed += 1
+
+            await message.reply_text(
+                "📢 **Broadcast Finished**\n\n"
+                f"✅ Sent: {sent}\n❌ Failed: {failed}"
+            )
+        except Exception as exc:
+            await message.reply_text(
+                f"❌ Broadcast failed:\n`{str(exc)[:1000]}`"
+            )
+        return
+
+    await message.reply_text(
+        "Use the menu below:", reply_markup=user_keyboard(uid)
+    )
+
+@main_app.on_message(filters.private, group=1000)
+async def update_diagnostic(client, message):
+    try:
+        logger.info(
+            "📡 TELEGRAM UPDATE RECEIVED | user=%s | text=%r",
+            message.from_user.id if message.from_user else "unknown",
+            (message.text or message.caption or "")[:200],
+        )
+    except Exception:
+        logger.exception("Diagnostic handler error")

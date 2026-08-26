@@ -1,28 +1,33 @@
 services:
   - type: web
     name: tg-power
-    env: docker
-    plan: free
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
     autoDeploy: true
-    healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
-        sync: false
-      - key: OWNER_ID
-        sync: false
-      - key: ADMIN_IDS
         sync: false
       - key: API_ID
         sync: false
       - key: API_HASH
         sync: false
-      - key: USER_SESSION
-        sync: false
       - key: MONGO_URI
         sync: false
       - key: DB_NAME
-        value: tg_power_db
-      - key: YOUTUBE_COOKIES_BASE64
+        value: tg_power
+      - key: OWNER_ID
         sync: false
-      - key: YOUTUBE_PO_TOKEN
+      - key: ADMIN_IDS
         sync: false
+      - key: MAX_BOTS_PER_USER
+        value: "5"
+      - key: MAX_FILE_SIZE_MB
+        value: "2000"
+      - key: MAX_VIDEO_DURATION_SECONDS
+        value: "1800"
+
+      - key: USER_SESSION
+        sync: false
+      - key: ENABLE_BOTFATHER_AUTOMATION
+        value: "true"

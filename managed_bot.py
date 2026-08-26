@@ -236,8 +236,8 @@ LANGUAGES = {
 
 
 class ManagedBotHandler:
-    def __init__(self, bot_id: int, token: str):
-        self.bot_id = int(bot_id)
+    def __init__(self, bot_id, token: str):
+        self.bot_id = str(bot_id).lstrip("@").lower()
         self.token = token
 
         self.app = (
@@ -271,17 +271,14 @@ class ManagedBotHandler:
     def get_admin_keyboard(self):
         return ReplyKeyboardMarkup(
             [
-                [
-                    KeyboardButton("📢 Broadcast"),
-                    KeyboardButton("📊 Stats"),
-                ],
-                [
-                    KeyboardButton("✏️ Edit Start Message"),
-                    KeyboardButton("🔲 Edit Buttons"),
-                ],
-                [KeyboardButton("🔙 Main Menu")],
+                [KeyboardButton("📊 Stats"), KeyboardButton("📢 Broadcast")],
+                [KeyboardButton("👥 Bot Users"), KeyboardButton("📥 Download Stats")],
+                [KeyboardButton("⭐ Premium Status"), KeyboardButton("✏️ Start Message")],
+                [KeyboardButton("🔘 Custom Buttons"), KeyboardButton("🎨 Premium Caption")],
+                [KeyboardButton("📢 Premium Ads"), KeyboardButton("⚙️ Premium Settings")],
             ],
             resize_keyboard=True,
+            is_persistent=True,
         )
 
     def video_music_keyboard(self):
@@ -882,6 +879,30 @@ class ManagedBotHandler:
             ] = False
 
         # ---------------------------------------------
+        # PREMIUM ADMIN EDIT STATES
+        # ---------------------------------------------
+        if context.user_data.get("set_caption_mode"):
+            if await self.is_owner(user.id):
+                context.user_data.pop("set_caption_mode", None)
+                settings = await db.get_bot_premium_settings(self.bot_id)
+                settings["caption"] = text[:900]
+                await db.update_bot_premium_settings(self.bot_id, settings)
+                await update.message.reply_text("✅ Premium caption saved.", reply_markup=self.get_admin_keyboard())
+                return
+            context.user_data.pop("set_caption_mode", None)
+
+        if context.user_data.get("set_ads_mode"):
+            if await self.is_owner(user.id):
+                context.user_data.pop("set_ads_mode", None)
+                value = text.lower() in {"on", "yes", "1", "true", "enable", "enabled"}
+                settings = await db.get_bot_premium_settings(self.bot_id)
+                settings["ads_enabled"] = value
+                await db.update_bot_premium_settings(self.bot_id, settings)
+                await update.message.reply_text(f"✅ Premium ads are {'ON' if value else 'OFF'}.", reply_markup=self.get_admin_keyboard())
+                return
+            context.user_data.pop("set_ads_mode", None)
+
+        # ---------------------------------------------
         # 1.1 ADMIN CUSTOM START EDIT MODE
         # ---------------------------------------------
         if context.user_data.get(
@@ -904,18 +925,14 @@ class ManagedBotHandler:
                         "start_message"
                     ] = text
 
-                    if hasattr(db, "update_bot_premium_settings"):
+                    if hasattr(
+                        db,
+                        "update_bot_premium_settings",
+                    ):
                         await db.update_bot_premium_settings(
                             self.bot_id,
                             settings,
                         )
-                    else:
-                        for _key, _value in settings.items():
-                            await db.set_bot_premium_setting(
-                                self.bot_id,
-                                _key,
-                                _value,
-                            )
 
                     await update.message.reply_text(
                         "✅ Fariinta /start waxaa loo badalay si guul leh!",
@@ -983,18 +1000,14 @@ class ManagedBotHandler:
                         new_buttons[:10]
                     )
 
-                    if hasattr(db, "update_bot_premium_settings"):
+                    if hasattr(
+                        db,
+                        "update_bot_premium_settings",
+                    ):
                         await db.update_bot_premium_settings(
                             self.bot_id,
                             settings,
                         )
-                    else:
-                        for _key, _value in settings.items():
-                            await db.set_bot_premium_setting(
-                                self.bot_id,
-                                _key,
-                                _value,
-                            )
 
                     await update.message.reply_text(
                         "✅ Si guul leh ayaa loo keydiyay "
@@ -1017,6 +1030,66 @@ class ManagedBotHandler:
         # ---------------------------------------------
         # 2. KEYBOARD BUTTON ACTIONS
         # ---------------------------------------------
+        if text == "👥 Bot Users":
+            if await self.is_owner(user.id):
+                users = await db.get_all_bot_users(self.bot_id)
+                await update.message.reply_text(f"👥 BOT USERS\n\nTotal: {len(users)}", reply_markup=self.get_admin_keyboard())
+            return
+
+        if text == "📥 Download Stats":
+            if await self.is_owner(user.id):
+                stats = await db.get_bot_stats(self.bot_id)
+                await update.message.reply_text(
+                    "📥 DOWNLOAD STATS\n\n"
+                    f"Total: {stats.get('total_downloads', 0)}\n"
+                    f"🎬 Videos: {stats.get('videos', 0)}\n"
+                    f"🎵 Audio: {stats.get('audio', 0)}\n"
+                    f"🖼 Photos: {stats.get('photos', 0)}",
+                    reply_markup=self.get_admin_keyboard(),
+                )
+            return
+
+        if text == "⭐ Premium Status":
+            if await self.is_owner(user.id):
+                bot = await db.get_bot(self.bot_id)
+                premium = (bot or {}).get("premium") or {}
+                active = await db.is_bot_premium(self.bot_id)
+                await update.message.reply_text(
+                    "⭐ PREMIUM STATUS\n\n"
+                    f"Status: {'🟢 ACTIVE' if active else '🔴 INACTIVE'}\n"
+                    f"Plan: {premium.get('plan', 'N/A')}\n"
+                    f"Expires: {premium.get('until', 'N/A')}",
+                    reply_markup=self.get_admin_keyboard(),
+                )
+            return
+
+        if text == "🎨 Premium Caption":
+            if await self.is_owner(user.id):
+                context.user_data["set_caption_mode"] = True
+                await update.message.reply_text("🎨 Send the Premium caption text:")
+            return
+
+        if text == "📢 Premium Ads":
+            if await self.is_owner(user.id):
+                context.user_data["set_ads_mode"] = True
+                settings = await db.get_bot_premium_settings(self.bot_id)
+                await update.message.reply_text(
+                    f"📢 Current Premium ads: {'ON' if settings.get('ads_enabled') else 'OFF'}\n\nSend ON or OFF."
+                )
+            return
+
+        if text == "⚙️ Premium Settings":
+            if await self.is_owner(user.id):
+                settings = await db.get_bot_premium_settings(self.bot_id)
+                await update.message.reply_text(
+                    "⚙️ PREMIUM SETTINGS\n\n"
+                    f"Custom buttons: {len(settings.get('buttons', []))}/10\n"
+                    f"Caption: {'configured' if settings.get('caption') else 'default'}\n"
+                    f"Ads: {'ON' if settings.get('ads_enabled') else 'OFF'}",
+                    reply_markup=self.get_admin_keyboard(),
+                )
+            return
+
         if text in [
             "🌐 Language",
             "Language",
@@ -1083,7 +1156,7 @@ class ManagedBotHandler:
                 )
             return
 
-        if text == "✏️ Edit Start Message":
+        if text == "✏️ Start Message":
             if await self.is_owner(user.id):
                 context.user_data[
                     "set_start_mode"
@@ -1097,7 +1170,7 @@ class ManagedBotHandler:
                 )
             return
 
-        if text == "🔲 Edit Buttons":
+        if text == "🔘 Custom Buttons":
             if await self.is_owner(user.id):
                 context.user_data[
                     "set_buttons_mode"
@@ -1353,7 +1426,7 @@ class ManagedBotHandler:
                     self.bot_id,
                     user.id,
                     platform,
-                    media_type,
+                    url,
                 )
             except Exception:
                 logger.exception(

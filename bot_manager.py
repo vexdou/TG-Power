@@ -1,152 +1,101 @@
 import asyncio
 import logging
-from telegram import Update
+
+from database import get_all_active_bots, get_bot_by_username, log_event
 from managed_bot import ManagedBotHandler
-from database import db
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("TG-POWER.BOT-MANAGER")
+active_bots = {}
+manager_lock = asyncio.Lock()
 
 
-class DynamicBotManager:
-    def __init__(self):
-        self.running_bots: dict[int, ManagedBotHandler] = {}
-        self.start_locks: dict[int, asyncio.Lock] = {}
+def _clean_username(username):
+    return (username or "").strip().lstrip("@").lower()
 
-    def _get_lock(self, bot_id: int) -> asyncio.Lock:
-        if bot_id not in self.start_locks:
-            self.start_locks[bot_id] = asyncio.Lock()
-        return self.start_locks[bot_id]
 
-    async def load_and_start_all(self):
-        bots = await db.get_all_active_bots()
-        logger.info("🔄 Loading %s managed bots...", len(bots))
+async def _run_handler(handler):
+    await handler.app.initialize()
+    await handler.app.start()
+    if handler.app.updater is not None:
+        await handler.app.updater.start_polling(drop_pending_updates=True)
 
-        for bot in bots:
-            if not bot.get("token"):
-                await db.update_bot_status(bot["bot_id"], "failed")
-                continue
 
-            asyncio.create_task(
-                self.start_bot_instance(
-                    int(bot["bot_id"]),
-                    bot["token"],
-                )
-            )
+async def start_managed_bot(token: str, bot_username: str, owner_id: int):
+    username = _clean_username(bot_username)
+    if not token or not username or not owner_id:
+        logger.error("Invalid managed bot data: %r %r", username, owner_id)
+        return False
 
-    async def start_bot_instance(self, bot_id: int | str, token: str) -> bool:
-        bot_id = int(bot_id)
-        async with self._get_lock(bot_id):
-            if bot_id in self.running_bots:
-                handler = self.running_bots[bot_id]
-                if handler.app.updater and handler.app.updater.running:
-                    return True
-
-            handler = None
-
+    async with manager_lock:
+        if username in active_bots:
+            return True
+        handler = ManagedBotHandler(username, token)
+        try:
+            await _run_handler(handler)
+            active_bots[username] = handler
+            await log_event("bot_started", bot_username=username, owner_id=owner_id)
+            logger.info("🟢 Managed bot started: @%s", username)
+            return True
+        except Exception:
+            logger.exception("🔴 Failed to start managed bot @%s", username)
             try:
-                await db.update_bot_status(bot_id, "starting")
-
-                handler = ManagedBotHandler(bot_id, token)
-
-                await handler.app.initialize()
-
-                bot_me = await handler.app.bot.get_me()
-                username = bot_me.username or str(bot_id)
-
-                await handler.app.bot.delete_webhook(
-                    drop_pending_updates=True
-                )
-
-                await handler.app.start()
-
-                if not handler.app.updater:
-                    raise RuntimeError("Telegram updater is unavailable")
-
-                await handler.app.updater.start_polling(
-                    drop_pending_updates=True,
-                    allowed_updates=Update.ALL_TYPES,
-                    poll_interval=0.5,
-                    timeout=30,
-                )
-
-                self.running_bots[bot_id] = handler
-                await db.update_bot_status(bot_id, "active")
-
-                logger.info(
-                    "🟢 Managed bot @%s (%s) is ONLINE",
-                    username,
-                    bot_id,
-                )
-                return True
-
-            except Exception as exc:
-                logger.exception(
-                    "🔴 Failed to start managed bot %s",
-                    bot_id,
-                )
-
-                await db.update_bot_status(bot_id, "failed")
-
-                if handler is not None:
-                    try:
-                        if handler.app.updater and handler.app.updater.running:
-                            await handler.app.updater.stop()
-                    except Exception:
-                        pass
-
-                    try:
-                        if handler.app.running:
-                            await handler.app.stop()
-                    except Exception:
-                        pass
-
-                    try:
-                        await handler.app.shutdown()
-                    except Exception:
-                        pass
-
-                return False
-
-    async def stop_bot_instance(self, bot_id: int | str):
-        bot_id = int(bot_id)
-        async with self._get_lock(bot_id):
-            handler = self.running_bots.pop(bot_id, None)
-
-            if not handler:
-                await db.update_bot_status(bot_id, "stopped")
-                return
-
-            try:
-                if handler.app.updater and handler.app.updater.running:
-                    await handler.app.updater.stop()
-
-                if handler.app.running:
-                    await handler.app.stop()
-
                 await handler.app.shutdown()
-                await db.update_bot_status(bot_id, "stopped")
-
-                logger.info("🛑 Managed bot %s stopped", bot_id)
-
             except Exception:
-                logger.exception(
-                    "Error stopping managed bot %s",
-                    bot_id,
-                )
-
-    async def restart_bot_instance(self, bot_id: int | str) -> bool:
-        bot_id = int(bot_id)
-        bot = await db.get_bot(bot_id)
-
-        if not bot or not bot.get("token"):
+                pass
+            await log_event("bot_start_failed", bot_username=username, owner_id=owner_id)
             return False
 
-        await self.stop_bot_instance(bot_id)
 
-        return await self.start_bot_instance(
-            bot_id,
-            bot["token"],
-        )
+async def stop_managed_bot(bot_username: str):
+    username = _clean_username(bot_username)
+    async with manager_lock:
+        handler = active_bots.pop(username, None)
+    if not handler:
+        return False
+    try:
+        if handler.app.updater and handler.app.updater.running:
+            await handler.app.updater.stop()
+        if handler.app.running:
+            await handler.app.stop()
+        await handler.app.shutdown()
+        await log_event("bot_stopped", bot_username=username)
+        logger.info("🔴 Managed bot stopped: @%s", username)
+        return True
+    except Exception:
+        logger.exception("Failed to stop @%s", username)
+        return False
 
 
-bot_manager = DynamicBotManager()
+async def init_all_bots():
+    try:
+        bots = await get_all_active_bots()
+    except Exception:
+        logger.exception("Could not load managed bots")
+        return {"started": 0, "failed": 0, "skipped": 0}
+    started = failed = skipped = 0
+    for bot in bots:
+        token = (bot.get("token") or "").strip()
+        username = _clean_username(bot.get("username"))
+        owner_id = bot.get("owner_id")
+        if not token or not username or not owner_id:
+            skipped += 1
+            continue
+        if await start_managed_bot(token, username, int(owner_id)):
+            started += 1
+        else:
+            failed += 1
+    return {"started": started, "failed": failed, "skipped": skipped}
+
+
+async def restart_bot_from_db(bot_username: str):
+    username = _clean_username(bot_username)
+    bot = await get_bot_by_username(username)
+    if not bot:
+        return False
+    await stop_managed_bot(username)
+    return await start_managed_bot(bot.get("token"), username, int(bot.get("owner_id")))
+
+
+async def shutdown_all_bots():
+    for username in list(active_bots):
+        await stop_managed_bot(username)
