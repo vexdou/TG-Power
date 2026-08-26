@@ -1,1709 +1,572 @@
-import logging
-from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, DESCENDING
-from pymongo.errors import OperationFailure, DuplicateKeyError
 
-from config import Config
-
-logger = logging.getLogger(__name__)
+import config
 
 
-def utcnow() -> datetime:
+client = AsyncIOMotorClient(config.MONGO_URI)
+db: AsyncIOMotorDatabase = client[config.DB_NAME]
+
+users_col = db["users"]
+bots_col = db["bots"]
+bot_users_col = db["bot_users"]
+downloads_col = db["downloads"]
+broadcasts_col = db["broadcasts"]
+settings_col = db["settings"]
+logs_col = db["logs"]
+channels_col = db["channels"]
+
+
+def now():
     return datetime.now(timezone.utc)
 
 
-def normalize_datetime(value: Any) -> Optional[datetime]:
-    if not value:
+async def _ensure_index(collection, keys, *, unique=False, name=None):
+    """
+    Create an index safely.
+
+    MongoDB can already contain an index with the same key pattern but a
+    different name/options. Calling create_index() directly in that situation
+    raises IndexOptionsConflict (code 85), which was causing the Render crash.
+
+    This function:
+      1. Reuses an existing compatible index.
+      2. Removes an incompatible index with the same key pattern.
+      3. Creates the requested index.
+    """
+    if isinstance(keys, str):
+        normalized_keys = [(keys, ASCENDING)]
+    else:
+        normalized_keys = list(keys)
+
+    desired_name = name or "_".join(
+        f"{field}_{direction}" for field, direction in normalized_keys
+    )
+
+    existing_indexes = await collection.list_indexes().to_list(length=None)
+
+    for index in existing_indexes:
+        existing_keys = list(index.get("key", {}).items())
+
+        if existing_keys != normalized_keys:
+            continue
+
+        existing_name = index.get("name")
+        existing_unique = bool(index.get("unique", False))
+
+        # Same key pattern + compatible options: reuse it.
+        if existing_unique == unique:
+            return existing_name
+
+        # Same key pattern but incompatible options (for example unique=True
+        # requested while an old non-unique index exists). Remove the old one.
+        if existing_name:
+            await collection.drop_index(existing_name)
+        break
+
+    kwargs = {"unique": unique, "name": desired_name}
+    return await collection.create_index(normalized_keys, **kwargs)
+
+
+async def init_db():
+    """
+    Initialize all MongoDB indexes.
+
+    This version is safe to run repeatedly and fixes the common
+    IndexOptionsConflict / duplicate-index-name problem caused by an older
+    database schema.
+    """
+
+    await _ensure_index(
+        users_col,
+        "user_id",
+        unique=True,
+        name="user_id_unique",
+    )
+
+    await _ensure_index(
+        bots_col,
+        "username",
+        unique=True,
+        name="username_unique",
+    )
+
+    await _ensure_index(
+        bots_col,
+        [("owner_id", ASCENDING), ("status", ASCENDING)],
+        name="owner_id_1_status_1",
+    )
+
+    await _ensure_index(
+        bot_users_col,
+        [("bot_username", ASCENDING), ("user_id", ASCENDING)],
+        unique=True,
+        name="bot_username_1_user_id_1_unique",
+    )
+
+    await _ensure_index(
+        bot_users_col,
+        [("bot_username", ASCENDING), ("is_blocked", ASCENDING)],
+        name="bot_username_1_is_blocked_1",
+    )
+
+    await _ensure_index(
+        downloads_col,
+        [("bot_username", ASCENDING), ("timestamp", DESCENDING)],
+        name="bot_username_1_timestamp_-1",
+    )
+
+    await _ensure_index(
+        downloads_col,
+        "user_id",
+        name="user_id_1",
+    )
+
+    await _ensure_index(
+        broadcasts_col,
+        [("bot_username", ASCENDING), ("created_at", DESCENDING)],
+        name="bot_username_1_created_at_-1",
+    )
+
+    await _ensure_index(
+        logs_col,
+        "created_at",
+        name="created_at_1",
+    )
+
+    await _ensure_index(
+        channels_col,
+        [("bot_username", ASCENDING), ("username", ASCENDING)],
+        unique=True,
+        name="bot_username_1_username_1_unique",
+    )
+
+    await _ensure_index(
+        settings_col,
+        "key",
+        unique=True,
+        name="key_unique",
+    )
+
+
+async def add_user(user_id: int, first_name: str = "", username: str = ""):
+    await users_col.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "first_name": first_name or "",
+                "username": username or "",
+                "last_seen": now(),
+            },
+            "$setOnInsert": {
+                "created_at": now(),
+                "can_create": True,
+                "lang": "so",
+            },
+        },
+        upsert=True,
+    )
+
+
+async def get_user(user_id: int):
+    return await users_col.find_one({"user_id": user_id})
+
+
+async def get_main_user_help(user_id: int):
+    """Return the main-bot profile information used by the Help panel."""
+    user = await get_user(user_id)
+    if not user:
         return None
 
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-
-    return None
-
-
-class Database:
-    """
-    MongoDB database layer for TG-Power.
-
-    Includes:
-        - Main users
-        - Managed bots
-        - Managed bot users
-        - Downloads
-        - Premium subscriptions
-        - Premium settings
-        - Premium payments
-        - Premium statistics
-        - Global settings
-        - Force join
-        - Pending downloads
-    """
-
-    def __init__(self):
-        self.client = AsyncIOMotorClient(
-            Config.MONGO_URI,
-            serverSelectionTimeoutMS=10000,
-            connectTimeoutMS=10000,
-            socketTimeoutMS=30000,
-            retryWrites=True,
-        )
-
-        self.db = self.client[Config.DB_NAME]
-
-        self.users = self.db.users
-        self.bots = self.db.bots
-        self.bot_users = self.db.bot_users
-        self.downloads = self.db.downloads
-        self.broadcasts = self.db.broadcasts
-        self.settings = self.db.settings
-        self.pending_downloads = self.db.pending_downloads
-
-        # Premium
-        self.premium_settings = self.db.premium_settings
-        self.premium_payments = self.db.premium_payments
-
-        self._connected = False
-
-    # =========================================================
-    # INDEXES
-    # =========================================================
-
-    async def _ensure_index(
-        self,
-        collection,
-        keys,
-        name,
-        unique=False,
-        sparse=False,
-    ):
-        keys = list(keys)
-
-        try:
-            indexes = await collection.index_information()
-        except Exception:
-            logger.exception(
-                "Could not read MongoDB indexes for %s",
-                collection.name,
-            )
-            raise
-
-        for existing_name, existing_spec in indexes.items():
-            existing_keys = existing_spec.get("key", [])
-
-            if list(existing_keys) != keys:
-                continue
-
-            existing_unique = bool(existing_spec.get("unique", False))
-            existing_sparse = bool(existing_spec.get("sparse", False))
-
-            if existing_name == "_id_":
-                return existing_name
-
-            if (
-                (not unique or existing_unique)
-                and (not sparse or existing_sparse)
-            ):
-                return existing_name
-
-            if unique and not existing_unique:
-                try:
-                    await collection.drop_index(existing_name)
-
-                    return await collection.create_index(
-                        keys,
-                        unique=True,
-                        sparse=sparse,
-                        name=name,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Could not migrate index %s on %s",
-                        existing_name,
-                        collection.name,
-                    )
-
-                    try:
-                        return await collection.create_index(
-                            keys,
-                            unique=False,
-                            sparse=existing_sparse,
-                            name=existing_name,
-                        )
-                    except Exception:
-                        pass
-
-        try:
-            return await collection.create_index(
-                keys,
-                unique=unique,
-                sparse=sparse,
-                name=name,
-            )
-        except OperationFailure as exc:
-            if getattr(exc, "code", None) == 85:
-                indexes_after = await collection.index_information()
-
-                for current_name, current_spec in indexes_after.items():
-                    if list(current_spec.get("key", [])) == keys:
-                        return current_name
-
-            raise
-
-    # =========================================================
-    # CONNECTION
-    # =========================================================
-
-    async def connect(self):
-        try:
-            await self.client.admin.command("ping")
-            await self.init_db()
-
-            self._connected = True
-
-            logger.info("✅ MongoDB connected successfully")
-
-        except Exception:
-            self._connected = False
-            logger.exception("❌ MongoDB connection failed")
-            raise
-
-    async def close(self):
-        try:
-            self.client.close()
-            self._connected = False
-            logger.info("🔌 MongoDB connection closed")
-        except Exception:
-            logger.exception("Database close error")
-
-    # =========================================================
-    # INIT
-    # =========================================================
-
-    async def init_db(self):
-
-        # Main users
-        await self._ensure_index(
-            self.users,
-            [("user_id", ASCENDING)],
-            "user_id_unique",
-            unique=True,
-        )
-
-        # Bots
-        await self._ensure_index(
-            self.bots,
-            [("bot_id", ASCENDING)],
-            "bot_id_unique",
-            unique=True,
-        )
-
-        await self._ensure_index(
-            self.bots,
-            [("owner_id", ASCENDING)],
-            "owner_id_index",
-        )
-
-        await self._ensure_index(
-            self.bots,
-            [("username", ASCENDING)],
-            "username_unique",
-            unique=True,
-            sparse=True,
-        )
-
-        await self._ensure_index(
-            self.bots,
-            [("status", ASCENDING)],
-            "status_index",
-        )
-
-        await self._ensure_index(
-            self.bots,
-            [("premium.is_active", ASCENDING)],
-            "premium_active_index",
-        )
-
-        await self._ensure_index(
-            self.bots,
-            [("premium.until", ASCENDING)],
-            "premium_until_index",
-        )
-
-        await self._ensure_index(
-            self.bots,
-            [("premium.plan", ASCENDING)],
-            "premium_plan_index",
-        )
-
-        # Bot users
-        await self._ensure_index(
-            self.bot_users,
-            [
-                ("bot_id", ASCENDING),
-                ("user_id", ASCENDING),
-            ],
-            "bot_user_unique",
-            unique=True,
-        )
-
-        await self._ensure_index(
-            self.bot_users,
-            [("bot_id", ASCENDING)],
-            "bot_users_bot_id",
-        )
-
-        # Downloads
-        await self._ensure_index(
-            self.downloads,
-            [
-                ("bot_id", ASCENDING),
-                ("timestamp", DESCENDING),
-            ],
-            "downloads_bot_timestamp",
-        )
-
-        await self._ensure_index(
-            self.downloads,
-            [("user_id", ASCENDING)],
-            "downloads_user_id",
-        )
-
-        # Pending
-        await self._ensure_index(
-            self.pending_downloads,
-            [("created_at", DESCENDING)],
-            "pending_created_at",
-        )
-
-        # Premium settings
-        await self._ensure_index(
-            self.premium_settings,
-            [("bot_id", ASCENDING)],
-            "premium_settings_bot_unique",
-            unique=True,
-        )
-
-        # Premium payments
-        await self._ensure_index(
-            self.premium_payments,
-            [("telegram_payment_charge_id", ASCENDING)],
-            "telegram_charge_unique",
-            unique=True,
-            sparse=True,
-        )
-
-        await self._ensure_index(
-            self.premium_payments,
-            [
-                ("bot_id", ASCENDING),
-                ("created_at", DESCENDING),
-            ],
-            "premium_payments_bot_date",
-        )
-
-        await self._ensure_index(
-            self.premium_payments,
-            [("user_id", ASCENDING)],
-            "premium_payments_user",
-        )
-
-        # =====================================================
-        # PLATFORM SETTINGS
-        # =====================================================
-
-        existing = await self.settings.find_one(
-            {"_id": "platform_config"}
-        )
-
-        defaults = {
-            "force_join_channels": [],
-            "maintenance_mode": False,
-            "bot_creation_enabled": True,
-            "max_video_seconds": 600,
-            "max_file_mb": 50,
-        }
-
-        if not existing:
-            defaults["created_at"] = utcnow()
-
-            await self.settings.insert_one(
-                {
-                    "_id": "platform_config",
-                    **defaults,
-                }
-            )
-        else:
-            missing = {}
-
-            for key, value in defaults.items():
-                if key not in existing:
-                    missing[key] = value
-
-            if missing:
-                await self.settings.update_one(
-                    {"_id": "platform_config"},
-                    {"$set": missing},
-                )
-
-        # =====================================================
-        # PREMIUM PRICES
-        # =====================================================
-
-        premium_prices = await self.settings.find_one(
-            {"_id": "premium_prices"}
-        )
-
-        if not premium_prices:
-            await self.settings.insert_one(
-                {
-                    "_id": "premium_prices",
-                    "prices": {
-                        "1m": 100,
-                        "3m": 300,
-                        "6m": 600,
-                        "1y": 1000,
-                    },
-                    "updated_at": utcnow(),
-                }
-            )
-
-        # =====================================================
-        # PREMIUM SYSTEM CONFIG
-        # =====================================================
-
-        premium_config = await self.settings.find_one(
-            {"_id": "premium_config"}
-        )
-
-        if not premium_config:
-            await self.settings.insert_one(
-                {
-                    "_id": "premium_config",
-                    "enabled": True,
-                    "currency": "XTR",
-                    "max_custom_buttons": 10,
-                    "priority_enabled": True,
-                    "ads_disabled": True,
-                    "custom_caption_enabled": True,
-                    "custom_buttons_enabled": True,
-                    "created_at": utcnow(),
-                    "updated_at": utcnow(),
-                }
-            )
-
-    # =========================================================
-    # PREMIUM PRICES
-    # =========================================================
-
-    async def get_premium_prices(self) -> dict:
-        cfg = await self.settings.find_one(
-            {"_id": "premium_prices"}
-        )
-
-        default = {
-            "1m": 100,
-            "3m": 300,
-            "6m": 600,
-            "1y": 1000,
-        }
-
-        if not cfg:
-            return default
-
-        prices = cfg.get("prices", {})
-
-        result = {}
-
-        for plan, value in default.items():
-            try:
-                result[plan] = int(prices.get(plan, value))
-            except Exception:
-                result[plan] = value
-
-        return result
-
-    async def set_premium_prices(self, new_prices: dict) -> dict:
-        current = await self.get_premium_prices()
-
-        for plan, value in new_prices.items():
-            if plan not in {"1m", "3m", "6m", "1y"}:
-                continue
-
-            try:
-                value = int(value)
-            except Exception:
-                continue
-
-            if value < 1:
-                continue
-
-            current[plan] = value
-
-        await self.settings.update_one(
-            {"_id": "premium_prices"},
-            {
-                "$set": {
-                    "prices": current,
-                    "updated_at": utcnow(),
-                }
-            },
-            upsert=True,
-        )
-
-        return current
-
-    # =========================================================
-    # PREMIUM CONFIG
-    # =========================================================
-
-    async def get_premium_config(self) -> dict:
-        cfg = await self.settings.find_one(
-            {"_id": "premium_config"}
-        )
-
-        if not cfg:
-            return {
-                "enabled": True,
-                "currency": "XTR",
-                "max_custom_buttons": 10,
-                "priority_enabled": True,
-                "ads_disabled": True,
-                "custom_caption_enabled": True,
-                "custom_buttons_enabled": True,
-            }
-
-        return cfg
-
-    async def set_premium_config(self, key: str, value):
-        await self.settings.update_one(
-            {"_id": "premium_config"},
-            {
-                "$set": {
-                    key: value,
-                    "updated_at": utcnow(),
-                }
-            },
-            upsert=True,
-        )
-
-        return value
-
-    async def is_premium_enabled(self) -> bool:
-        cfg = await self.get_premium_config()
-        return bool(cfg.get("enabled", True))
-
-    # =========================================================
-    # PREMIUM ACTIVATION
-    # =========================================================
-
-    async def activate_bot_premium(
-        self,
-        bot_id: int | str,
-        owner_id: int | str,
-        plan: str,
-        days: int,
-        stars: int,
-        payment_id: str = "",
-        source: str = "telegram_stars",
-    ):
-        bid = int(bot_id)
-        owner = int(owner_id)
-
-        now = utcnow()
-
-        bot = await self.get_bot(bid)
-
-        if not bot:
-            return None
-
-        existing_premium = bot.get("premium") or {}
-
-        current_until = normalize_datetime(
-            existing_premium.get("until")
-        )
-
-        if current_until and current_until > now:
-            start_date = current_until
-        else:
-            start_date = now
-
-        until = start_date + timedelta(days=int(days))
-
-        premium_data = {
-            "is_active": True,
-            "plan": str(plan),
-            "stars": int(stars),
-            "activated_at": now,
-            "until": until,
-            "activated_by": owner,
-            "source": source,
-            "payment_id": payment_id or "",
-            "updated_at": now,
-        }
-
-        await self.bots.update_one(
-            {"bot_id": bid},
-            {
-                "$set": {
-                    "premium": premium_data,
-                    "updated_at": now,
-                }
-            },
-        )
-
-        return until
-
-    async def grant_bot_premium(
-        self,
-        bot_id: int | str,
-        days: int,
-        admin_id: int | str,
-    ):
-        bot = await self.get_bot(int(bot_id))
-
-        if not bot:
-            return None
-
-        owner_id = bot.get("owner_id", admin_id)
-
-        return await self.activate_bot_premium(
-            bot_id=int(bot_id),
-            owner_id=int(owner_id),
-            plan="grant",
-            days=int(days),
-            stars=0,
-            source="admin_grant",
-        )
-
-    async def deactivate_bot_premium(
-        self,
-        bot_id: int | str,
-    ) -> bool:
-        result = await self.bots.update_one(
-            {"bot_id": int(bot_id)},
-            {
-                "$set": {
-                    "premium.is_active": False,
-                    "premium.deactivated_at": utcnow(),
-                }
-            },
-        )
-
-        return result.modified_count > 0
-
-    async def expire_premium_bots(self) -> int:
-        now = utcnow()
-
-        result = await self.bots.update_many(
-            {
-                "premium.is_active": True,
-                "premium.until": {
-                    "$lte": now,
-                },
-            },
-            {
-                "$set": {
-                    "premium.is_active": False,
-                    "premium.expired_at": now,
-                }
-            },
-        )
-
-        return result.modified_count
-
-    async def get_premium_bots(self, include_expired=False):
-        now = utcnow()
-
-        if include_expired:
-            cursor = self.bots.find(
-                {
-                    "premium": {
-                        "$exists": True,
-                    }
-                }
-            )
-        else:
-            cursor = self.bots.find(
-                {
-                    "premium.is_active": True,
-                    "premium.until": {
-                        "$gt": now,
-                    },
-                }
-            )
-
-        cursor = cursor.sort(
-            "premium.until",
-            ASCENDING,
-        )
-
-        return await cursor.to_list(length=5000)
-
-    async def is_bot_premium(self, bot_id: int | str) -> bool:
-        bot = await self.get_bot(int(bot_id))
-
-        if not bot:
-            return False
-
-        premium = bot.get("premium") or {}
-
-        if not premium.get("is_active"):
-            return False
-
-        until = normalize_datetime(
-            premium.get("until")
-        )
-
-        if not until:
-            return False
-
-        if until <= utcnow():
-            await self.deactivate_bot_premium(bot_id)
-            return False
-
+    bot_count = await count_user_bots(user_id)
+    download_count = await downloads_col.count_documents({"user_id": user_id})
+
+    created_at = user.get("created_at")
+    if created_at is not None and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
+    return {
+        "user_id": user.get("user_id", user_id),
+        "first_name": user.get("first_name", ""),
+        "username": user.get("username", ""),
+        "created_at": created_at,
+        "lang": user.get("lang", "so"),
+        "bot_count": bot_count,
+        "download_count": download_count,
+    }
+
+
+async def set_creation_access(user_id: int, allowed: bool):
+    await users_col.update_one(
+        {"user_id": user_id},
+        {"$set": {"can_create": allowed}},
+        upsert=True,
+    )
+
+
+async def can_create_bot(user_id: int):
+    if user_id in config.ADMIN_IDS:
         return True
 
-    async def get_bot_premium(self, bot_id: int | str) -> dict:
-        bot = await self.get_bot(bot_id)
+    global_setting = await settings_col.find_one({"key": "bot_creation"})
+    if global_setting and not global_setting.get("value", True):
+        return False
 
-        if not bot:
-            return {}
+    user = await get_user(user_id)
+    return bool(user and user.get("can_create", False))
 
-        premium = bot.get("premium") or {}
 
-        until = normalize_datetime(
-            premium.get("until")
-        )
+async def is_bot_creation_enabled():
+    doc = await settings_col.find_one({"key": "bot_creation"})
+    return True if not doc else bool(doc.get("value", True))
 
-        active = bool(
-            premium.get("is_active")
-            and until
-            and until > utcnow()
-        )
 
-        premium["is_active"] = active
-
-        return premium
-
-    async def get_premium_remaining_days(
-        self,
-        bot_id: int | str,
-    ) -> int:
-        premium = await self.get_bot_premium(bot_id)
-
-        until = normalize_datetime(
-            premium.get("until")
-        )
-
-        if not until:
-            return 0
-
-        seconds = (until - utcnow()).total_seconds()
-
-        if seconds <= 0:
-            return 0
-
-        return max(
-            1,
-            int(seconds / 86400),
-        )
-
-    # =========================================================
-    # PREMIUM PAYMENT RECORDS
-    # =========================================================
-
-    async def payment_exists(
-        self,
-        telegram_payment_charge_id: str,
-    ) -> bool:
-        if not telegram_payment_charge_id:
-            return False
-
-        doc = await self.premium_payments.find_one(
-            {
-                "telegram_payment_charge_id":
-                    telegram_payment_charge_id
+async def toggle_bot_creation(status: bool):
+    await settings_col.update_one(
+        {"key": "bot_creation"},
+        {
+            "$set": {
+                "key": "bot_creation",
+                "value": status,
             }
-        )
+        },
+        upsert=True,
+    )
 
-        return doc is not None
 
-    async def save_premium_payment(
-        self,
-        user_id: int,
-        bot_id: int,
-        plan: str,
-        stars: int,
-        telegram_payment_charge_id: str = "",
-        provider_payment_charge_id: str = "",
-        invoice_payload: str = "",
-    ) -> bool:
+async def register_bot(
+    owner_id: int,
+    bot_token: str,
+    bot_name: str,
+    bot_username: str,
+    bot_id: Optional[int] = None,
+):
+    doc = {
+        "owner_id": owner_id,
+        "token": bot_token,
+        "name": bot_name,
+        "username": bot_username.lstrip("@"),
+        "bot_id": bot_id,
+        "status": "active",
+        "force_join_channels": [],
+        "total_users": 0,
+        "total_downloads": 0,
+        "created_at": now(),
+    }
 
-        document = {
-            "user_id": int(user_id),
-            "bot_id": int(bot_id),
-            "plan": str(plan),
-            "stars": int(stars),
-            "telegram_payment_charge_id":
-                telegram_payment_charge_id or "",
-            "provider_payment_charge_id":
-                provider_payment_charge_id or "",
-            "invoice_payload":
-                invoice_payload or "",
-            "created_at": utcnow(),
+    await bots_col.insert_one(doc)
+    return doc
+
+
+async def get_bot_by_username(username: str):
+    return await bots_col.find_one({"username": username.lstrip("@")})
+
+
+async def get_bot_by_owner(owner_id: int, username: str):
+    return await bots_col.find_one(
+        {
+            "owner_id": owner_id,
+            "username": username.lstrip("@"),
         }
+    )
 
-        try:
-            await self.premium_payments.insert_one(
-                document
-            )
-            return True
 
-        except DuplicateKeyError:
-            return False
+async def get_user_bots(owner_id: int, limit: int = 100):
+    return (
+        await bots_col.find({"owner_id": owner_id})
+        .sort("created_at", DESCENDING)
+        .to_list(length=limit)
+    )
 
-    async def get_bot_payments(
-        self,
-        bot_id: int | str,
-        limit: int = 100,
-    ):
-        cursor = (
-            self.premium_payments
-            .find({"bot_id": int(bot_id)})
-            .sort("created_at", DESCENDING)
-            .limit(limit)
-        )
 
-        return await cursor.to_list(length=limit)
+async def get_all_active_bots(limit: int = 2000):
+    return await bots_col.find({"status": "active"}).to_list(length=limit)
 
-    async def get_all_premium_payments(
-        self,
-        limit: int = 1000,
-    ):
-        cursor = (
-            self.premium_payments
-            .find({})
-            .sort("created_at", DESCENDING)
-            .limit(limit)
-        )
 
-        return await cursor.to_list(length=limit)
-
-    async def get_premium_stats(self):
-        total_payments = await self.premium_payments.count_documents({})
-
-        total_stars_result = await self.premium_payments.aggregate(
-            [
-                {
-                    "$group": {
-                        "_id": None,
-                        "total": {
-                            "$sum": "$stars"
-                        },
-                    }
-                }
-            ]
-        ).to_list(length=1)
-
-        total_stars = (
-            int(total_stars_result[0]["total"])
-            if total_stars_result
-            else 0
-        )
-
-        active_bots = await self.bots.count_documents(
-            {
-                "premium.is_active": True,
-                "premium.until": {
-                    "$gt": utcnow()
-                },
-            }
-        )
-
-        return {
-            "payments": total_payments,
-            "stars": total_stars,
-            "active_bots": active_bots,
+async def count_user_bots(owner_id: int):
+    return await bots_col.count_documents(
+        {
+            "owner_id": owner_id,
+            "status": {"$ne": "deleted"},
         }
+    )
 
-    # =========================================================
-    # PREMIUM SETTINGS PER BOT
-    # =========================================================
 
-    async def get_bot_premium_settings(
-        self,
-        bot_id: int | str,
-    ) -> dict:
-        doc = await self.premium_settings.find_one(
-            {"bot_id": int(bot_id)}
-        )
+async def set_bot_status(username: str, status: str):
+    await bots_col.update_one(
+        {"username": username.lstrip("@")},
+        {"$set": {"status": status}},
+    )
 
-        if not doc:
-            return {
-                "caption": "",
-                "buttons": [],
-                "ad_text": "",
-                "ad_enabled": False,
-                "priority": True,
-            }
 
-        return doc.get(
-            "settings",
-            {},
-        )
+async def delete_bot(username: str):
+    await bots_col.update_one(
+        {"username": username.lstrip("@")},
+        {"$set": {"status": "deleted"}},
+    )
 
-    async def set_bot_premium_setting(
-        self,
-        bot_id: int | str,
-        key: str,
-        value,
-    ):
-        bid = int(bot_id)
 
-        await self.premium_settings.update_one(
-            {"bot_id": bid},
-            {
-                "$set": {
-                    f"settings.{key}": value,
-                    "updated_at": utcnow(),
-                },
-                "$setOnInsert": {
-                    "bot_id": bid,
-                    "created_at": utcnow(),
-                },
-            },
-            upsert=True,
-        )
+async def add_bot_user(
+    bot_username: str,
+    user_id: int,
+    first_name: str = "",
+    username: str = "",
+):
+    bot_username = bot_username.lstrip("@")
 
-        return value
-
-    async def delete_bot_premium_setting(
-        self,
-        bot_id: int | str,
-        key: str,
-    ):
-        await self.premium_settings.update_one(
-            {"bot_id": int(bot_id)},
-            {
-                "$unset": {
-                    f"settings.{key}": ""
-                },
-                "$set": {
-                    "updated_at": utcnow()
-                },
-            },
-        )
-
-    async def clear_bot_premium_settings(
-        self,
-        bot_id: int | str,
-    ):
-        await self.premium_settings.update_one(
-            {"bot_id": int(bot_id)},
-            {
-                "$set": {
-                    "settings": {},
-                    "updated_at": utcnow(),
-                }
-            },
-            upsert=True,
-        )
-
-    # =========================================================
-    # MAIN USERS
-    # =========================================================
-
-    async def save_main_user(
-        self,
-        user_id: int,
-        username: str = "",
-        full_name: str = "",
-    ):
-        uid = int(user_id)
-        now = utcnow()
-
-        await self.users.update_one(
-            {"user_id": uid},
-            {
-                "$set": {
-                    "username": username or "",
-                    "full_name": full_name or "",
-                    "last_seen": now,
-                },
-                "$setOnInsert": {
-                    "user_id": uid,
-                    "language": "en",
-                    "is_banned": False,
-                    "created_at": now,
-                },
-            },
-            upsert=True,
-        )
-
-        return await self.get_main_user(uid)
-
-    async def get_main_user(self, user_id: int):
-        return await self.users.find_one(
-            {"user_id": int(user_id)}
-        )
-
-    async def get_main_user_language(
-        self,
-        user_id: int,
-    ) -> str:
-        user = await self.get_main_user(user_id)
-
-        if not user:
-            return "en"
-
-        return user.get(
-            "language",
-            "en",
-        )
-
-    async def set_main_user_language(
-        self,
-        user_id: int,
-        language: str,
-    ):
-        uid = int(user_id)
-        now = utcnow()
-
-        await self.users.update_one(
-            {"user_id": uid},
-            {
-                "$set": {
-                    "language": language,
-                    "last_seen": now,
-                },
-                "$setOnInsert": {
-                    "user_id": uid,
-                    "is_banned": False,
-                    "created_at": now,
-                },
-            },
-            upsert=True,
-        )
-
-    async def get_all_main_users(self):
-        return await self.users.find({}).to_list(
-            length=10000
-        )
-
-    async def is_main_user_banned(
-        self,
-        user_id: int,
-    ) -> bool:
-        user = await self.users.find_one(
-            {"user_id": int(user_id)},
-            {"is_banned": 1},
-        )
-
-        return bool(
-            user and user.get("is_banned", False)
-        )
-
-    async def set_main_user_banned(
-        self,
-        user_id: int,
-        banned: bool,
-    ):
-        uid = int(user_id)
-
-        await self.users.update_one(
-            {"user_id": uid},
-            {
-                "$set": {
-                    "is_banned": bool(banned)
-                },
-                "$setOnInsert": {
-                    "user_id": uid,
-                    "created_at": utcnow(),
-                },
-            },
-            upsert=True,
-        )
-
-    # =========================================================
-    # MANAGED BOTS
-    # =========================================================
-
-    async def save_bot(
-        self,
-        bot_id: int | str,
-        owner_id: int | str,
-        token: str,
-        username: str,
-        title: str,
-    ):
-        bid = int(bot_id)
-        owner = int(owner_id)
-
-        existing = await self.bots.find_one(
-            {"bot_id": bid}
-        )
-
-        now = utcnow()
-
-        created_at = (
-            existing.get("created_at")
-            if existing
-            else now
-        )
-
-        status = (
-            existing.get("status", "starting")
-            if existing
-            else "starting"
-        )
-
-        force_join_channels = (
-            existing.get(
-                "force_join_channels",
-                [],
-            )
-            if existing
-            else []
-        )
-
-        premium = (
-            existing.get(
-                "premium",
-                {},
-            )
-            if existing
-            else {}
-        )
-
-        bot_doc = {
-            "bot_id": bid,
-            "owner_id": owner,
-            "title": title or "",
-            "username": username or "",
-            "token": token or "",
-            "status": status,
-            "created_at": created_at,
-            "updated_at": now,
-            "force_join_channels":
-                force_join_channels,
-            "premium": premium,
+    existing = await bot_users_col.find_one(
+        {
+            "bot_username": bot_username,
+            "user_id": user_id,
         }
+    )
 
-        await self.bots.update_one(
-            {"bot_id": bid},
-            {"$set": bot_doc},
-            upsert=True,
+    await bot_users_col.update_one(
+        {
+            "bot_username": bot_username,
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "first_name": first_name or "",
+                "username": username or "",
+                "last_seen": now(),
+                "is_blocked": False,
+            },
+            "$setOnInsert": {
+                "joined_at": now(),
+                "download_count": 0,
+            },
+        },
+        upsert=True,
+    )
+
+    if not existing:
+        await bots_col.update_one(
+            {"username": bot_username},
+            {"$inc": {"total_users": 1}},
         )
 
-        return await self.get_bot(bid)
 
-    async def get_bot(
-        self,
-        bot_id: int | str,
-    ):
-        return await self.bots.find_one(
-            {"bot_id": int(bot_id)}
-        )
+async def mark_bot_user_blocked(
+    bot_username: str,
+    user_id: int,
+    blocked: bool = True,
+):
+    await bot_users_col.update_one(
+        {
+            "bot_username": bot_username.lstrip("@"),
+            "user_id": user_id,
+        },
+        {"$set": {"is_blocked": blocked}},
+        upsert=True,
+    )
 
-    async def get_user_bots(
-        self,
-        owner_id: int | str,
-    ):
-        cursor = (
-            self.bots
-            .find({"owner_id": int(owner_id)})
-            .sort("created_at", DESCENDING)
-        )
 
-        return await cursor.to_list(length=100)
-
-    async def get_all_bots(self):
-        cursor = self.bots.find(
-            {}
-        ).sort(
-            "created_at",
-            DESCENDING,
-        )
-
-        return await cursor.to_list(
-            length=1000
-        )
-
-    async def get_all_active_bots(self):
-        cursor = self.bots.find(
+async def get_bot_users(
+    bot_username: str,
+    skip: int = 0,
+    limit: int = 50,
+):
+    return (
+        await bot_users_col.find(
             {
-                "status": {
-                    "$in": [
-                        "active",
-                        "starting",
-                        "failed",
-                    ]
-                }
+                "bot_username": bot_username.lstrip("@"),
+                "is_blocked": {"$ne": True},
             }
         )
+        .sort("joined_at", ASCENDING)
+        .skip(skip)
+        .limit(limit)
+        .to_list(length=limit)
+    )
 
-        return await cursor.to_list(
-            length=1000
-        )
 
-    async def update_bot_status(
-        self,
-        bot_id: int | str,
-        status: str,
-    ):
-        result = await self.bots.update_one(
-            {"bot_id": int(bot_id)},
-            {
-                "$set": {
-                    "status": status,
-                    "status_updated_at": utcnow(),
-                }
-            },
-        )
+async def count_bot_users(bot_username: str):
+    return await bot_users_col.count_documents(
+        {"bot_username": bot_username.lstrip("@")}
+    )
 
-        return result.modified_count > 0
 
-    async def update_bot_token(
-        self,
-        bot_id: int | str,
-        token: str,
-    ):
-        await self.bots.update_one(
-            {"bot_id": int(bot_id)},
-            {
-                "$set": {
-                    "token": token,
-                    "updated_at": utcnow(),
-                }
-            },
-        )
+async def log_download(
+    bot_username: str,
+    user_id: int,
+    platform: str,
+    url: str = "",
+):
+    bot_username = bot_username.lstrip("@")
 
-    async def update_bot_username(
-        self,
-        bot_id: int | str,
-        username: str,
-    ):
-        await self.bots.update_one(
-            {"bot_id": int(bot_id)},
-            {
-                "$set": {
-                    "username": username,
-                    "updated_at": utcnow(),
-                }
-            },
-        )
-
-    async def delete_bot(
-        self,
-        bot_id: int | str,
-    ):
-        bid = int(bot_id)
-
-        await self.bots.delete_one(
-            {"bot_id": bid}
-        )
-
-        await self.bot_users.delete_many(
-            {"bot_id": bid}
-        )
-
-        await self.downloads.delete_many(
-            {"bot_id": bid}
-        )
-
-        await self.pending_downloads.delete_many(
-            {"bot_id": bid}
-        )
-
-        await self.premium_settings.delete_one(
-            {"bot_id": bid}
-        )
-
-        await self.premium_payments.delete_many(
-            {"bot_id": bid}
-        )
-
-    async def search_bots(
-        self,
-        query: str,
-    ):
-        query = (
-            str(query)
-            .strip()
-            .lstrip("@")
-        )
-
-        if not query:
-            return []
-
-        if query.isdigit():
-            cursor = self.bots.find(
-                {"bot_id": int(query)}
-            )
-        else:
-            cursor = self.bots.find(
-                {
-                    "username": {
-                        "$regex": query,
-                        "$options": "i",
-                    }
-                }
-            )
-
-        return await cursor.to_list(
-            length=30
-        )
-
-    # =========================================================
-    # BOT USERS
-    # =========================================================
-
-    async def save_bot_user(
-        self,
-        bot_id: int | str,
-        user_id: int | str,
-        username: str = "",
-        full_name: str = "",
-    ):
-        bid = int(bot_id)
-        uid = int(user_id)
-
-        now = utcnow()
-
-        await self.bot_users.update_one(
-            {
-                "bot_id": bid,
-                "user_id": uid,
-            },
-            {
-                "$set": {
-                    "username": username or "",
-                    "full_name": full_name or "",
-                    "last_seen": now,
-                },
-                "$setOnInsert": {
-                    "bot_id": bid,
-                    "user_id": uid,
-                    "language": "en",
-                    "created_at": now,
-                },
-            },
-            upsert=True,
-        )
-
-        return await self.get_bot_user(
-            bid,
-            uid,
-        )
-
-    async def get_bot_user(
-        self,
-        bot_id: int | str,
-        user_id: int | str,
-    ):
-        return await self.bot_users.find_one(
-            {
-                "bot_id": int(bot_id),
-                "user_id": int(user_id),
-            }
-        )
-
-    async def set_user_language(
-        self,
-        bot_id: int | str,
-        user_id: int | str,
-        language: str,
-    ):
-        bid = int(bot_id)
-        uid = int(user_id)
-
-        await self.bot_users.update_one(
-            {
-                "bot_id": bid,
-                "user_id": uid,
-            },
-            {
-                "$set": {
-                    "language": language,
-                    "last_seen": utcnow(),
-                },
-                "$setOnInsert": {
-                    "bot_id": bid,
-                    "user_id": uid,
-                    "username": "",
-                    "full_name": "",
-                    "created_at": utcnow(),
-                },
-            },
-            upsert=True,
-        )
-
-    async def get_all_bot_users(
-        self,
-        bot_id: int | str,
-    ):
-        return await self.bot_users.find(
-            {"bot_id": int(bot_id)}
-        ).to_list(length=None)
-
-    async def delete_bot_user(
-        self,
-        bot_id: int | str,
-        user_id: int | str,
-    ):
-        await self.bot_users.delete_one(
-            {
-                "bot_id": int(bot_id),
-                "user_id": int(user_id),
-            }
-        )
-
-    # =========================================================
-    # DOWNLOADS
-    # =========================================================
-
-    async def log_download(
-        self,
-        bot_id: int | str,
-        user_id: int | str,
-        platform: str = "general",
-        media_type: str = "video",
-        status: str = "success",
-        url: str = "",
-        title: str = "",
-        file_size: int = 0,
-    ):
-        document = {
-            "bot_id": int(bot_id),
-            "user_id": int(user_id),
-            "platform": platform or "general",
-            "media_type": media_type or "video",
-            "status": status or "success",
-            "url": url or "",
-            "title": title or "",
-            "file_size": int(file_size or 0),
-            "timestamp": utcnow(),
+    await downloads_col.insert_one(
+        {
+            "bot_username": bot_username,
+            "user_id": user_id,
+            "platform": platform,
+            "url": url[:500],
+            "timestamp": now(),
         }
+    )
 
-        result = await self.downloads.insert_one(
-            document
-        )
+    await bot_users_col.update_one(
+        {
+            "bot_username": bot_username,
+            "user_id": user_id,
+        },
+        {"$inc": {"download_count": 1}},
+    )
 
-        return result.inserted_id
+    await bots_col.update_one(
+        {"username": bot_username},
+        {"$inc": {"total_downloads": 1}},
+    )
 
-    async def count_downloads(self):
-        return await self.downloads.count_documents({})
 
-    async def count_successful_downloads(self):
-        return await self.downloads.count_documents(
-            {"status": "success"}
-        )
-
-    async def get_bot_downloads(
-        self,
-        bot_id: int | str,
-        limit: int = 100,
-    ):
-        cursor = (
-            self.downloads
-            .find({"bot_id": int(bot_id)})
-            .sort("timestamp", DESCENDING)
-            .limit(limit)
-        )
-
-        return await cursor.to_list(
-            length=limit
-        )
-
-    async def get_bot_stats(
-        self,
-        bot_id: int | str,
-    ):
-        bid = int(bot_id)
-
-        total_users = await self.bot_users.count_documents(
-            {"bot_id": bid}
-        )
-
-        total_downloads = await self.downloads.count_documents(
-            {"bot_id": bid}
-        )
-
-        videos = await self.downloads.count_documents(
-            {
-                "bot_id": bid,
-                "media_type": "video",
+async def bot_platform_counts(bot_username: str):
+    pipeline = [
+        {
+            "$match": {
+                "bot_username": bot_username.lstrip("@"),
             }
-        )
-
-        audio = await self.downloads.count_documents(
-            {
-                "bot_id": bid,
-                "media_type": "audio",
+        },
+        {
+            "$group": {
+                "_id": "$platform",
+                "count": {"$sum": 1},
             }
-        )
-
-        photos = await self.downloads.count_documents(
-            {
-                "bot_id": bid,
-                "media_type": "photo",
+        },
+        {
+            "$sort": {
+                "count": -1,
             }
-        )
+        },
+    ]
 
-        successful = await self.downloads.count_documents(
-            {
-                "bot_id": bid,
-                "status": "success",
+    return await downloads_col.aggregate(pipeline).to_list(length=50)
+
+
+async def add_broadcast(
+    bot_username: str,
+    owner_id: int,
+    total: int,
+):
+    doc = {
+        "bot_username": bot_username.lstrip("@"),
+        "owner_id": owner_id,
+        "total": total,
+        "sent": 0,
+        "failed": 0,
+        "created_at": now(),
+        "status": "running",
+    }
+
+    res = await broadcasts_col.insert_one(doc)
+    return res.inserted_id
+
+
+async def finish_broadcast(
+    broadcast_id,
+    sent: int,
+    failed: int,
+):
+    await broadcasts_col.update_one(
+        {"_id": broadcast_id},
+        {
+            "$set": {
+                "sent": sent,
+                "failed": failed,
+                "status": "completed",
+                "finished_at": now(),
             }
-        )
+        },
+    )
 
-        failed = await self.downloads.count_documents(
-            {
-                "bot_id": bid,
-                "status": "failed",
-            }
-        )
 
-        return {
-            "total_users": total_users,
-            "total_downloads": total_downloads,
-            "videos": videos,
-            "audio": audio,
-            "photos": photos,
-            "successful": successful,
-            "failed": failed,
+async def log_event(event: str, **data):
+    await logs_col.insert_one(
+        {
+            "event": event,
+            "created_at": now(),
+            **data,
         }
+    )
 
-    async def get_global_stats(self):
-        return {
-            "users":
-                await self.users.count_documents({}),
 
-            "bots":
-                await self.bots.count_documents({}),
+async def get_channels(bot_username: str):
+    return (
+        await channels_col.find(
+            {"bot_username": bot_username.lstrip("@")}
+        )
+        .sort("username", ASCENDING)
+        .to_list(length=50)
+    )
 
-            "active_bots":
-                await self.bots.count_documents(
-                    {"status": "active"}
-                ),
 
-            "starting_bots":
-                await self.bots.count_documents(
-                    {"status": "starting"}
-                ),
+async def add_channel(
+    bot_username: str,
+    username: str,
+    chat_id: Optional[int] = None,
+):
+    username = username.strip().lstrip("@")
+    bot_username = bot_username.lstrip("@")
 
-            "failed_bots":
-                await self.bots.count_documents(
-                    {"status": "failed"}
-                ),
+    await channels_col.update_one(
+        {
+            "bot_username": bot_username,
+            "username": username,
+        },
+        {
+            "$set": {
+                "chat_id": chat_id,
+                "username": username,
+            }
+        },
+        upsert=True,
+    )
 
-            "bot_users":
-                await self.bot_users.count_documents({}),
+    await bots_col.update_one(
+        {"username": bot_username},
+        {"$addToSet": {"force_join_channels": username}},
+    )
 
-            "downloads":
-                await self.downloads.count_documents({}),
 
-            "successful_downloads":
-                await self.downloads.count_documents(
-                    {"status": "success"}
-                ),
+async def remove_channel(bot_username: str, username: str):
+    username = username.strip().lstrip("@")
+    bot_username = bot_username.lstrip("@")
+
+    await channels_col.delete_one(
+        {
+            "bot_username": bot_username,
+            "username": username,
         }
+    )
 
-    # =========================================================
-    # SYSTEM SETTINGS
-    # =========================================================
-
-    async def get_system_setting(
-        self,
-        key: str,
-        default=None,
-    ):
-        cfg = await self.settings.find_one(
-            {"_id": "platform_config"}
-        )
-
-        return (
-            cfg.get(key, default)
-            if cfg
-            else default
-        )
-
-    async def set_system_setting(
-        self,
-        key: str,
-        value,
-    ):
-        await self.settings.update_one(
-            {"_id": "platform_config"},
-            {
-                "$set": {
-                    key: value,
-                    "updated_at": utcnow(),
-                }
-            },
-            upsert=True,
-        )
-
-        return value
-
-    async def is_bot_creation_enabled(self):
-        return bool(
-            await self.get_system_setting(
-                "bot_creation_enabled",
-                True,
-            )
-        )
-
-    async def set_bot_creation_enabled(
-        self,
-        status: bool,
-    ):
-        return await self.set_system_setting(
-            "bot_creation_enabled",
-            bool(status),
-        )
-
-    async def is_maintenance_mode(self):
-        return bool(
-            await self.get_system_setting(
-                "maintenance_mode",
-                False,
-            )
-        )
-
-    async def set_maintenance_mode(
-        self,
-        status: bool,
-    ):
-        return await self.set_system_setting(
-            "maintenance_mode",
-            bool(status),
-        )
-
-    # =========================================================
-    # FORCE JOIN
-    # =========================================================
-
-    async def get_global_force_join_channels(self):
-        cfg = await self.settings.find_one(
-            {"_id": "platform_config"}
-        )
-
-        return (
-            cfg.get("force_join_channels", [])
-            if cfg
-            else []
-        )
-
-    async def add_global_force_join_channel(
-        self,
-        channel: str,
-    ):
-        channel = str(channel).strip()
-
-        if not channel:
-            return (
-                False,
-                await self.get_global_force_join_channels(),
-            )
-
-        channels = (
-            await self.get_global_force_join_channels()
-        )
-
-        if channel in channels:
-            return False, channels
-
-        if len(channels) >= 5:
-            return False, channels
-
-        await self.settings.update_one(
-            {"_id": "platform_config"},
-            {
-                "$addToSet": {
-                    "force_join_channels": channel
-                }
-            },
-            upsert=True,
-        )
-
-        return (
-            True,
-            await self.get_global_force_join_channels(),
-        )
-
-    async def remove_global_force_join_channel(
-        self,
-        channel: str,
-    ):
-        await self.settings.update_one(
-            {"_id": "platform_config"},
-            {
-                "$pull": {
-                    "force_join_channels": channel
-                }
-            },
-        )
-
-        return await self.get_global_force_join_channels()
-
-    async def clear_global_force_join_channels(self):
-        await self.settings.update_one(
-            {"_id": "platform_config"},
-            {
-                "$set": {
-                    "force_join_channels": []
-                }
-            },
-            upsert=True,
-        )
-
-    # =========================================================
-    # PENDING DOWNLOADS
-    # =========================================================
-
-    async def save_pending_download(
-        self,
-        bot_id: int | str,
-        user_id: int | str,
-        url: str,
-        data: dict | None = None,
-    ):
-        document = {
-            "bot_id": int(bot_id),
-            "user_id": int(user_id),
-            "url": url,
-            "data": data or {},
-            "created_at": utcnow(),
-        }
-
-        result = await self.pending_downloads.insert_one(
-            document
-        )
-
-        return result.inserted_id
-
-    async def get_pending_download(
-        self,
-        pending_id,
-    ):
-        return await self.pending_downloads.find_one(
-            {"_id": pending_id}
-        )
-
-    async def delete_pending_download(
-        self,
-        pending_id,
-    ):
-        await self.pending_downloads.delete_one(
-            {"_id": pending_id}
-        )
+    await bots_col.update_one(
+        {"username": bot_username},
+        {"$pull": {"force_join_channels": username}},
+    )
 
 
-db = Database()
+async def set_premium(
+    bot_username: str,
+    user_id: int,
+    enabled: bool,
+):
+    await bot_users_col.update_one(
+        {
+            "bot_username": bot_username.lstrip("@"),
+            "user_id": user_id,
+        },
+        {"$set": {"premium": enabled}},
+        upsert=True,
+    )
+
+
+async def get_main_stats():
+    return {
+        "users": await users_col.count_documents({}),
+        "bots": await bots_col.count_documents({"status": "active"}),
+        "downloads": await downloads_col.count_documents({}),
+        "owners": await bots_col.distinct("owner_id"),
+    }
