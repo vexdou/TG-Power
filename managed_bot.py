@@ -1,8 +1,16 @@
 import asyncio
 import logging
 import os
+from urllib.parse import urlparse
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -50,7 +58,6 @@ LANGUAGES = {
         "broadcast_start": "📢 Broadcasting to {count} users...",
         "broadcast_success": "✅ Broadcast finished.\n\n📤 Sent: {sent}\n❌ Failed: {failed}",
     },
-
     "so": {
         "welcome": (
             "👋 Soo dhawoow!\n\n"
@@ -76,7 +83,6 @@ LANGUAGES = {
         "broadcast_start": "📢 Waxaa loo meel marinayaa {count} users...",
         "broadcast_success": "✅ Broadcast-gii waa dhammaaday.\n\n📤 Loo diray: {sent}\n❌ Ku dhowaad/Hurtay: {failed}",
     },
-
     "ar": {
         "welcome": (
             "👋 أهلاً بك!\n\n"
@@ -100,7 +106,6 @@ LANGUAGES = {
         "broadcast_start": "📢 جارٍ الإرسال إلى {count} من المستخدمين...",
         "broadcast_success": "✅ اكتملت الإذاعة.\n\n📤 تم الإرسال: {sent}\n❌ فشل: {failed}",
     },
-
     "es": {
         "welcome": "👋 ¡Bienvenido!\n\nEnvíame un enlace público.",
         "invalid": "❌ Envía un enlace http/https válido.",
@@ -119,7 +124,6 @@ LANGUAGES = {
         "broadcast_start": "📢 Transmitiendo a {count} usuarios...",
         "broadcast_success": "✅ Transmisión finalizada.\n\n📤 Enviados: {sent}\n❌ Fallidos: {failed}",
     },
-
     "fr": {
         "welcome": "👋 Bienvenue !",
         "invalid": "❌ Envoyez un lien http/https valide.",
@@ -138,7 +142,6 @@ LANGUAGES = {
         "broadcast_start": "📢 Diffusion auprès de {count} utilisateurs...",
         "broadcast_success": "✅ Diffusion terminée.\n\n📤 Envoyés : {sent}\n❌ Échecs : {failed}",
     },
-
     "tr": {
         "welcome": "👋 Hoş geldiniz!",
         "invalid": "❌ Geçerli bir bağlantı gönderin.",
@@ -157,7 +160,6 @@ LANGUAGES = {
         "broadcast_start": "📢 {count} kullanıcıya yayın yapılıyor...",
         "broadcast_success": "✅ Yayın tamamlandı.\n\n📤 Gönderilen: {sent}\n❌ Başarısız: {failed}",
     },
-
     "de": {
         "welcome": "👋 Willkommen!",
         "invalid": "❌ Bitte sende einen gültigen Link.",
@@ -176,7 +178,6 @@ LANGUAGES = {
         "broadcast_start": "📢 Senden an {count} Benutzer...",
         "broadcast_success": "✅ Broadcast beendet.\n\n📤 Gesendet: {sent}\n❌ Fehlschläge: {failed}",
     },
-
     "pt": {
         "welcome": "👋 Bem-vindo!",
         "invalid": "❌ Envie um link válido.",
@@ -195,7 +196,6 @@ LANGUAGES = {
         "broadcast_start": "📢 Transmitindo para {count} usuários...",
         "broadcast_success": "✅ Transmissão concluída.\n\n📤 Enviados: {sent}\n❌ Falhas: {failed}",
     },
-
     "hi": {
         "welcome": "👋 स्वागत है!",
         "invalid": "❌ कृपया सही लिंक भेजें।",
@@ -214,7 +214,6 @@ LANGUAGES = {
         "broadcast_start": "📢 {count} उपयोगकर्ताओं को भेजा जा रहा है...",
         "broadcast_success": "✅ ब्रॉडकास्ट पूरा हुआ。\n\n📤 भेजे गए: {sent}\n❌ असफल: {failed}",
     },
-
     "id": {
         "welcome": "👋 Selamat datang!",
         "invalid": "❌ Kirim tautan yang valid.",
@@ -236,12 +235,7 @@ LANGUAGES = {
 }
 
 
-# =========================================================
-# MANAGED BOT
-# =========================================================
-
 class ManagedBotHandler:
-
     def __init__(self, bot_id: int, token: str):
         self.bot_id = int(bot_id)
         self.token = token
@@ -256,7 +250,7 @@ class ManagedBotHandler:
         self._setup_handlers()
 
     # =====================================================
-    # KEYBOARDS & PREMIUM BUTTONS (UP TO 10 BUTTONS)
+    # KEYBOARDS & PREMIUM BUTTONS
     # =====================================================
 
     async def get_main_keyboard(self, user_id: int):
@@ -264,110 +258,209 @@ class ManagedBotHandler:
             return ReplyKeyboardMarkup(
                 [
                     [KeyboardButton("🌐 Language")],
-                    [KeyboardButton("👨‍💼 Admin Panel")]
+                    [KeyboardButton("👨‍💼 Admin Panel")],
                 ],
-                resize_keyboard=True
+                resize_keyboard=True,
             )
+
         return ReplyKeyboardMarkup(
-            [
-                [KeyboardButton("🌐 Language")]
-            ],
-            resize_keyboard=True
+            [[KeyboardButton("🌐 Language")]],
+            resize_keyboard=True,
         )
 
     def get_admin_keyboard(self):
         return ReplyKeyboardMarkup(
             [
-                [KeyboardButton("📢 Broadcast"), KeyboardButton("📊 Stats")],
-                [KeyboardButton("✏️ Edit Start Message"), KeyboardButton("🔲 Edit Buttons")],
-                [KeyboardButton("🔙 Main Menu")]
+                [
+                    KeyboardButton("📢 Broadcast"),
+                    KeyboardButton("📊 Stats"),
+                ],
+                [
+                    KeyboardButton("✏️ Edit Start Message"),
+                    KeyboardButton("🔲 Edit Buttons"),
+                ],
+                [KeyboardButton("🔙 Main Menu")],
             ],
-            resize_keyboard=True
+            resize_keyboard=True,
         )
 
     def video_music_keyboard(self):
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                InlineKeyboardButton(
-                    "🎵 MUSIC",
-                    callback_data="convert_music",
-                )
+                [
+                    InlineKeyboardButton(
+                        "🎵 MUSIC",
+                        callback_data="convert_music",
+                    )
+                ]
             ]
-        ])
+        )
 
-    async def get_custom_keyboard(self, is_prem: bool, default_keyboard=None):
-        """Builds custom buttons (up to 10) for premium bots + default buttons like MUSIC."""
+    @staticmethod
+    def _valid_button_url(url: str) -> bool:
+        try:
+            parsed = urlparse(url)
+            return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+        except Exception:
+            return False
+
+    async def get_custom_keyboard(
+        self,
+        is_prem: bool,
+        default_keyboard=None,
+    ):
         keyboard = []
+
         if is_prem:
             try:
-                settings = await db.get_bot_premium_settings(self.bot_id)
+                settings = (
+                    await db.get_bot_premium_settings(self.bot_id)
+                    or {}
+                )
                 raw_buttons = settings.get("buttons", [])
+
                 row = []
-                for btn in raw_buttons[:10]:  # Max 10 custom buttons
-                    label = str(btn.get("label", "Button"))
-                    url = str(btn.get("url", "https://t.me"))
-                    row.append(InlineKeyboardButton(label, url=url))
-                    if len(row) == 2:  # 2 buttons per row
+
+                for btn in raw_buttons[:10]:
+                    label = str(
+                        btn.get("label", "Button")
+                    ).strip()[:64]
+
+                    url = str(
+                        btn.get("url", "")
+                    ).strip()
+
+                    if not label or not self._valid_button_url(url):
+                        continue
+
+                    row.append(
+                        InlineKeyboardButton(
+                            label,
+                            url=url,
+                        )
+                    )
+
+                    if len(row) == 2:
                         keyboard.append(row)
                         row = []
+
                 if row:
                     keyboard.append(row)
+
             except Exception:
-                logger.exception("Error building custom premium buttons")
+                logger.exception(
+                    "Error building custom premium buttons"
+                )
 
-        if default_keyboard and isinstance(default_keyboard, InlineKeyboardMarkup):
-            for r in default_keyboard.inline_keyboard:
-                keyboard.append(r)
-        elif default_keyboard and isinstance(default_keyboard, list):
-            for r in default_keyboard:
-                keyboard.append(r)
+        if (
+            default_keyboard
+            and isinstance(
+                default_keyboard,
+                InlineKeyboardMarkup,
+            )
+        ):
+            for row in default_keyboard.inline_keyboard:
+                keyboard.append(row)
 
-        return InlineKeyboardMarkup(keyboard) if keyboard else None
+        elif default_keyboard and isinstance(
+            default_keyboard,
+            list,
+        ):
+            for row in default_keyboard:
+                keyboard.append(row)
+
+        return (
+            InlineKeyboardMarkup(keyboard)
+            if keyboard
+            else None
+        )
 
     def language_keyboard(self):
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                InlineKeyboardButton("English 🇬🇧", callback_data="msetlang_en"),
-                InlineKeyboardButton("Soomaali 🇸🇴", callback_data="msetlang_so"),
-            ],
-            [
-                InlineKeyboardButton("العربية 🇸🇦", callback_data="msetlang_ar"),
-                InlineKeyboardButton("Español 🇪🇸", callback_data="msetlang_es"),
-            ],
-            [
-                InlineKeyboardButton("Français 🇫🇷", callback_data="msetlang_fr"),
-                InlineKeyboardButton("Türkçe 🇹🇷", callback_data="msetlang_tr"),
-            ],
-            [
-                InlineKeyboardButton("Deutsch 🇩🇪", callback_data="msetlang_de"),
-                InlineKeyboardButton("Português 🇵🇹", callback_data="msetlang_pt"),
-            ],
-            [
-                InlineKeyboardButton("हिन्दी 🇮🇳", callback_data="msetlang_hi"),
-                InlineKeyboardButton("Bahasa 🇮🇩", callback_data="msetlang_id"),
-            ],
-        ])
+                [
+                    InlineKeyboardButton(
+                        "English 🇬🇧",
+                        callback_data="msetlang_en",
+                    ),
+                    InlineKeyboardButton(
+                        "Soomaali 🇸🇴",
+                        callback_data="msetlang_so",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "العربية 🇸🇦",
+                        callback_data="msetlang_ar",
+                    ),
+                    InlineKeyboardButton(
+                        "Español 🇪🇸",
+                        callback_data="msetlang_es",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Français 🇫🇷",
+                        callback_data="msetlang_fr",
+                    ),
+                    InlineKeyboardButton(
+                        "Türkçe 🇹🇷",
+                        callback_data="msetlang_tr",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Deutsch 🇩🇪",
+                        callback_data="msetlang_de",
+                    ),
+                    InlineKeyboardButton(
+                        "Português 🇵🇹",
+                        callback_data="msetlang_pt",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "हिन्दी 🇮🇳",
+                        callback_data="msetlang_hi",
+                    ),
+                    InlineKeyboardButton(
+                        "Bahasa 🇮🇩",
+                        callback_data="msetlang_id",
+                    ),
+                ],
+            ]
+        )
 
     # =====================================================
     # HANDLERS SETUP
     # =====================================================
 
     def _setup_handlers(self):
-
         self.app.add_handler(
-            CommandHandler("start", self.start_command)
+            CommandHandler(
+                "start",
+                self.start_command,
+            )
         )
 
         self.app.add_handler(
-            CommandHandler("stats", self.stats_command)
+            CommandHandler(
+                "stats",
+                self.stats_command,
+            )
         )
 
         self.app.add_handler(
-            CommandHandler("broadcast", self.broadcast_command)
+            CommandHandler(
+                "broadcast",
+                self.broadcast_command,
+            )
         )
 
         self.app.add_handler(
-            CallbackQueryHandler(self.handle_callbacks)
+            CallbackQueryHandler(
+                self.handle_callbacks,
+            )
         )
 
         self.app.add_handler(
@@ -384,7 +477,9 @@ class ManagedBotHandler:
             )
         )
 
-        self.app.add_error_handler(self.error_handler)
+        self.app.add_error_handler(
+            self.error_handler
+        )
 
     # =====================================================
     # HELPERS
@@ -408,49 +503,85 @@ class ManagedBotHandler:
             return lang
 
         except Exception:
-            logger.exception("Could not get language")
+            logger.exception(
+                "Could not get language"
+            )
             return "en"
 
     async def is_owner(self, user_id):
         try:
-            bot_data = await db.get_bot(self.bot_id)
+            bot_data = await db.get_bot(
+                self.bot_id
+            )
 
             return bool(
                 bot_data
-                and int(bot_data.get("owner_id", 0)) == int(user_id)
+                and int(
+                    bot_data.get(
+                        "owner_id",
+                        0,
+                    )
+                )
+                == int(user_id)
             )
 
         except Exception:
-            logger.exception("Could not check bot owner")
+            logger.exception(
+                "Could not check bot owner"
+            )
             return False
 
-    async def send_stats_msg(self, update: Update, user_id: int):
-        stats = await db.get_bot_stats(self.bot_id)
-        lang = await self.get_language(user_id)
+    async def send_stats_msg(
+        self,
+        update: Update,
+        user_id: int,
+    ):
+        stats = await db.get_bot_stats(
+            self.bot_id
+        )
+
+        lang = await self.get_language(
+            user_id
+        )
         texts = LANGUAGES[lang]
 
         await update.message.reply_text(
             f"{texts['stats']}\n\n"
-            f"{texts['users']}: {stats.get('total_users', 0)}\n"
-            f"{texts['downloads']}: {stats.get('total_downloads', 0)}",
-            reply_markup=await self.get_main_keyboard(user_id),
+            f"{texts['users']}: "
+            f"{stats.get('total_users', 0)}\n"
+            f"{texts['downloads']}: "
+            f"{stats.get('total_downloads', 0)}",
+            reply_markup=await self.get_main_keyboard(
+                user_id
+            ),
         )
 
-    async def execute_broadcast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def execute_broadcast(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
         user_id = update.effective_user.id
         lang = await self.get_language(user_id)
         texts = LANGUAGES[lang]
 
-        users = await db.get_all_bot_users(self.bot_id)
+        users = await db.get_all_bot_users(
+            self.bot_id
+        )
 
-        start_text = texts.get("broadcast_start", "📢 Broadcasting to {count} users...").format(count=len(users))
-        progress = await update.message.reply_text(start_text)
+        progress = await update.message.reply_text(
+            texts.get(
+                "broadcast_start",
+                "📢 Broadcasting to {count} users...",
+            ).format(count=len(users))
+        )
 
         sent = 0
         failed = 0
 
         for bot_user in users:
             target_id = bot_user.get("user_id")
+
             if not target_id:
                 continue
 
@@ -460,19 +591,29 @@ class ManagedBotHandler:
                         chat_id=target_id,
                         text=update.message.text,
                     )
+
                 elif update.message.photo:
                     photo = update.message.photo[-1]
+
                     await self.app.bot.send_photo(
                         chat_id=target_id,
                         photo=photo.file_id,
-                        caption=update.message.caption or "",
+                        caption=(
+                            update.message.caption
+                            or ""
+                        ),
                     )
+
                 elif update.message.video:
                     await self.app.bot.send_video(
                         chat_id=target_id,
                         video=update.message.video.file_id,
-                        caption=update.message.caption or "",
+                        caption=(
+                            update.message.caption
+                            or ""
+                        ),
                     )
+
                 else:
                     continue
 
@@ -481,21 +622,34 @@ class ManagedBotHandler:
 
             except Exception as exc:
                 failed += 1
-                logger.warning("Broadcast failed user=%s error=%s", target_id, exc)
+                logger.warning(
+                    "Broadcast failed user=%s error=%s",
+                    target_id,
+                    exc,
+                )
 
         context.user_data["broadcast_mode"] = False
 
         try:
             success_text = texts.get(
-                "broadcast_success", 
-                "✅ Broadcast finished.\n\n📤 Sent: {sent}\n❌ Failed: {failed}"
-            ).format(sent=sent, failed=failed)
-            await progress.edit_text(success_text)
+                "broadcast_success",
+                "✅ Broadcast finished.\n\n"
+                "📤 Sent: {sent}\n"
+                "❌ Failed: {failed}",
+            ).format(
+                sent=sent,
+                failed=failed,
+            )
+
+            await progress.edit_text(
+                success_text
+            )
+
         except Exception:
             pass
 
     # =====================================================
-    # START COMMAND (SUPPORTS CUSTOM START MESSAGE & BUTTONS)
+    # START COMMAND
     # =====================================================
 
     async def start_command(
@@ -503,7 +657,10 @@ class ManagedBotHandler:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ):
-        if not update.message or not update.effective_user:
+        if (
+            not update.message
+            or not update.effective_user
+        ):
             return
 
         user = update.effective_user
@@ -516,24 +673,170 @@ class ManagedBotHandler:
                 user.full_name or "",
             )
         except Exception:
-            logger.exception("save_bot_user failed")
+            logger.exception(
+                "save_bot_user failed"
+            )
 
-        # Check if bot is Premium and has custom start message
-        is_prem = await db.is_bot_premium(self.bot_id)
-        settings = await db.get_bot_premium_settings(self.bot_id) if is_prem else {}
-        custom_start = settings.get("start_message") if is_prem else None
+        is_prem = await db.is_bot_premium(
+            self.bot_id
+        )
+
+        settings = (
+            await db.get_bot_premium_settings(
+                self.bot_id
+            )
+            if is_prem
+            else {}
+        )
+
+        custom_start = (
+            settings.get("start_message")
+            if is_prem
+            else None
+        )
 
         if custom_start:
-            reply_markup = await self.get_custom_keyboard(is_prem, None)
+            reply_markup = (
+                await self.get_custom_keyboard(
+                    is_prem,
+                    None,
+                )
+            )
+
             await update.message.reply_text(
                 custom_start,
                 reply_markup=reply_markup,
             )
+
         else:
             await update.message.reply_text(
                 "🌐 Select your language:",
                 reply_markup=self.language_keyboard(),
             )
+
+    # =====================================================
+    # MEDIA HELPERS
+    # =====================================================
+
+    @staticmethod
+    def _is_photo_file(path: str) -> bool:
+        return str(path).lower().endswith(
+            (
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".webp",
+                ".gif",
+            )
+        )
+
+    @staticmethod
+    def _is_video_file(path: str) -> bool:
+        return str(path).lower().endswith(
+            (
+                ".mp4",
+                ".mkv",
+                ".webm",
+                ".mov",
+                ".m4v",
+            )
+        )
+
+    async def _send_photo_files(
+        self,
+        update: Update,
+        paths: list[str],
+        title: str,
+        is_prem: bool,
+        custom_caption=None,
+    ):
+        paths = [
+            path
+            for path in paths
+            if path and os.path.isfile(path)
+        ]
+
+        if not paths:
+            raise FileNotFoundError(
+                "No photo files were found."
+            )
+
+        # Telegram allows max 10 items per media group.
+        if len(paths) == 1:
+            markup = await self.get_custom_keyboard(
+                is_prem,
+                None,
+            )
+
+            caption = (
+                custom_caption
+                if custom_caption
+                else f"✅ {title[:900]}"
+            )
+
+            await context_message_reply_photo(
+                update,
+                paths[0],
+                caption,
+                markup,
+            )
+            return
+
+        # Multiple TikTok slideshow images.
+        for start in range(0, len(paths), 10):
+            chunk = paths[start:start + 10]
+            handles = []
+
+            try:
+                media = []
+
+                for index, path in enumerate(chunk):
+                    handle = open(path, "rb")
+                    handles.append(handle)
+
+                    media.append(
+                        InputMediaPhoto(
+                            media=handle,
+                            caption=(
+                                custom_caption
+                                if (
+                                    start == 0
+                                    and index == 0
+                                    and custom_caption
+                                )
+                                else (
+                                    f"✅ {title[:900]}"
+                                    if start == 0
+                                    and index == 0
+                                    else None
+                                )
+                            ),
+                        )
+                    )
+
+                await update.message.reply_media_group(
+                    media=media,
+                )
+
+            finally:
+                for handle in handles:
+                    try:
+                        handle.close()
+                    except Exception:
+                        pass
+
+        # Inline buttons cannot be attached to a media group.
+        if is_prem:
+            markup = await self.get_custom_keyboard(
+                is_prem,
+                None,
+            )
+
+            if markup:
+                await update.message.reply_text(
+                    "🔗",
+                    reply_markup=markup,
+                )
 
     # =====================================================
     # MESSAGE HANDLER
@@ -544,150 +847,279 @@ class ManagedBotHandler:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ):
-        if not update.message or not update.effective_user:
+        if (
+            not update.message
+            or not update.effective_user
+        ):
             return
 
         user = update.effective_user
-        text = (update.message.text or "").strip()
-        lang = await self.get_language(user.id)
+        text = (
+            update.message.text
+            or ""
+        ).strip()
+
+        lang = await self.get_language(
+            user.id
+        )
         texts = LANGUAGES[lang]
 
         # ---------------------------------------------
         # 1. BROADCAST CHECK
         # ---------------------------------------------
-        if context.user_data.get("broadcast_mode"):
+        if context.user_data.get(
+            "broadcast_mode"
+        ):
             if await self.is_owner(user.id):
-                await self.execute_broadcast(update, context)
+                await self.execute_broadcast(
+                    update,
+                    context,
+                )
                 return
-            else:
-                context.user_data["broadcast_mode"] = False
+
+            context.user_data[
+                "broadcast_mode"
+            ] = False
 
         # ---------------------------------------------
         # 1.1 ADMIN CUSTOM START EDIT MODE
         # ---------------------------------------------
-        if context.user_data.get("set_start_mode"):
+        if context.user_data.get(
+            "set_start_mode"
+        ):
             if await self.is_owner(user.id):
-                context.user_data["set_start_mode"] = False
+                context.user_data[
+                    "set_start_mode"
+                ] = False
+
                 try:
-                    # Update settings in DB (Make sure update_bot_premium_settings exists in your db module)
-                    settings = await db.get_bot_premium_settings(self.bot_id) or {}
-                    settings["start_message"] = text
-                    if hasattr(db, "update_bot_premium_settings"):
-                        await db.update_bot_premium_settings(self.bot_id, settings)
+                    settings = (
+                        await db.get_bot_premium_settings(
+                            self.bot_id
+                        )
+                        or {}
+                    )
+
+                    settings[
+                        "start_message"
+                    ] = text
+
+                    if hasattr(
+                        db,
+                        "update_bot_premium_settings",
+                    ):
+                        await db.update_bot_premium_settings(
+                            self.bot_id,
+                            settings,
+                        )
+
                     await update.message.reply_text(
                         "✅ Fariinta /start waxaa loo badalay si guul leh!",
-                        reply_markup=self.get_admin_keyboard()
+                        reply_markup=self.get_admin_keyboard(),
                     )
-                except Exception as e:
-                    await update.message.reply_text(f"❌ Cilad ayaa dhacday: {e}", reply_markup=self.get_admin_keyboard())
+
+                except Exception as exc:
+                    await update.message.reply_text(
+                        f"❌ Cilad ayaa dhacday: {exc}",
+                        reply_markup=self.get_admin_keyboard(),
+                    )
+
                 return
-            else:
-                context.user_data["set_start_mode"] = False
+
+            context.user_data[
+                "set_start_mode"
+            ] = False
 
         # ---------------------------------------------
         # 1.2 ADMIN CUSTOM BUTTONS EDIT MODE
-        # Format example: Label | https://t.me/... (satarkiiba mid)
         # ---------------------------------------------
-        if context.user_data.get("set_buttons_mode"):
+        if context.user_data.get(
+            "set_buttons_mode"
+        ):
             if await self.is_owner(user.id):
-                context.user_data["set_buttons_mode"] = False
+                context.user_data[
+                    "set_buttons_mode"
+                ] = False
+
                 try:
-                    lines = text.split("\n")
+                    lines = text.splitlines()
                     new_buttons = []
+
                     for line in lines:
-                        if "|" in line:
-                            parts = line.split("|", 1)
-                            label = parts[0].strip()
-                            url = parts[1].strip()
-                            new_buttons.append({"label": label, "url": url})
-                    
-                    settings = await db.get_bot_premium_settings(self.bot_id) or {}
-                    settings["buttons"] = new_buttons[:10] # Max 10 buttons
-                    if hasattr(db, "update_bot_premium_settings"):
-                        await db.update_bot_premium_settings(self.bot_id, settings)
-                    
-                    await update.message.reply_text(
-                        f"✅ Si guul leh ayaa loo keydiyay {len(new_buttons[:10])} badhamo!",
-                        reply_markup=self.get_admin_keyboard()
+                        if "|" not in line:
+                            continue
+
+                        label, url = line.split(
+                            "|",
+                            1,
+                        )
+
+                        label = label.strip()
+                        url = url.strip()
+
+                        if (
+                            label
+                            and self._valid_button_url(url)
+                        ):
+                            new_buttons.append(
+                                {
+                                    "label": label[:64],
+                                    "url": url,
+                                }
+                            )
+
+                    settings = (
+                        await db.get_bot_premium_settings(
+                            self.bot_id
+                        )
+                        or {}
                     )
-                except Exception as e:
-                    await update.message.reply_text(f"❌ Cilad ayaa dhacday: {e}", reply_markup=self.get_admin_keyboard())
+
+                    settings["buttons"] = (
+                        new_buttons[:10]
+                    )
+
+                    if hasattr(
+                        db,
+                        "update_bot_premium_settings",
+                    ):
+                        await db.update_bot_premium_settings(
+                            self.bot_id,
+                            settings,
+                        )
+
+                    await update.message.reply_text(
+                        "✅ Si guul leh ayaa loo keydiyay "
+                        f"{len(new_buttons[:10])} badhamo!",
+                        reply_markup=self.get_admin_keyboard(),
+                    )
+
+                except Exception as exc:
+                    await update.message.reply_text(
+                        f"❌ Cilad ayaa dhacday: {exc}",
+                        reply_markup=self.get_admin_keyboard(),
+                    )
+
                 return
-            else:
-                context.user_data["set_buttons_mode"] = False
+
+            context.user_data[
+                "set_buttons_mode"
+            ] = False
 
         # ---------------------------------------------
         # 2. KEYBOARD BUTTON ACTIONS
         # ---------------------------------------------
-        if text in ["🌐 Language", "Language"]:
+        if text in [
+            "🌐 Language",
+            "Language",
+        ]:
             await update.message.reply_text(
                 texts["select_language"],
                 reply_markup=self.language_keyboard(),
             )
             return
 
-        if text in ["👨‍💼 Admin Panel", "Admin Panel"]:
+        if text in [
+            "👨‍💼 Admin Panel",
+            "Admin Panel",
+        ]:
             if await self.is_owner(user.id):
                 await update.message.reply_text(
-                    texts.get("admin_panel", "⚙️ **ADMIN PANEL**"),
+                    texts.get(
+                        "admin_panel",
+                        "⚙️ **ADMIN PANEL**",
+                    ),
                     parse_mode="Markdown",
                     reply_markup=self.get_admin_keyboard(),
                 )
             return
 
-        if text in ["🔙 Main Menu", "Main Menu"]:
-            main_kbd = await self.get_main_keyboard(user.id)
+        if text in [
+            "🔙 Main Menu",
+            "Main Menu",
+        ]:
             await update.message.reply_text(
                 "🔙 Main Menu",
-                reply_markup=main_kbd,
+                reply_markup=await self.get_main_keyboard(
+                    user.id
+                ),
             )
             return
 
-        if text in ["📊 Stats", "Stats"]:
+        if text in [
+            "📊 Stats",
+            "Stats",
+        ]:
             if await self.is_owner(user.id):
-                await self.send_stats_msg(update, user.id)
-                return
+                await self.send_stats_msg(
+                    update,
+                    user.id,
+                )
+            return
 
-        if text in ["📢 Broadcast", "Broadcast"]:
+        if text in [
+            "📢 Broadcast",
+            "Broadcast",
+        ]:
             if await self.is_owner(user.id):
-                context.user_data["broadcast_mode"] = True
+                context.user_data[
+                    "broadcast_mode"
+                ] = True
+
                 await update.message.reply_text(
-                    texts.get("broadcast_prompt", "📢 **BROADCAST MODE**"),
+                    texts.get(
+                        "broadcast_prompt",
+                        "📢 **BROADCAST MODE**",
+                    ),
                     parse_mode="Markdown",
                 )
-                return
+            return
 
-        if text in ["✏️ Edit Start Message"]:
+        if text == "✏️ Edit Start Message":
             if await self.is_owner(user.id):
-                context.user_data["set_start_mode"] = True
+                context.user_data[
+                    "set_start_mode"
+                ] = True
+
                 await update.message.reply_text(
-                    "✏️ **Fadlan soo dir qoraalka cusub ee aad rabto inuu noqdo Fariinta /start:**\n\n"
+                    "✏️ **Fadlan soo dir qoraalka cusub "
+                    "ee aad rabto inuu noqdo Fariinta /start:**\n\n"
                     "(Waxaad isticmaali kartaa Emoji ama qaabeynta Markdown).",
-                    parse_channel_username=True
+                    parse_mode="Markdown",
                 )
-                return
+            return
 
-        if text in ["🔲 Edit Buttons"]:
+        if text == "🔲 Edit Buttons":
             if await self.is_owner(user.id):
-                context.user_data["set_buttons_mode"] = True
+                context.user_data[
+                    "set_buttons_mode"
+                ] = True
+
                 await update.message.reply_text(
-                    "🔲 **Fadlan soo dir badhamadaada adoo raacinaya qaabkan (Line walba hal button):**\n\n"
+                    "🔲 **Fadlan soo dir badhamadaada adoo "
+                    "raacinaya qaabkan (Line walba hal button):**\n\n"
                     "Magaca Button-ka | https://t.me/linkgaaga\n"
                     "Channel-keena | https://t.me/ChannelName\n"
                     "Group-ka | https://t.me/GroupName\n\n"
                     "(Ilaa 10 badhamo ayaad gelin kartaa).",
+                    parse_mode="Markdown",
                 )
-                return
+            return
 
         # ---------------------------------------------
-        # 3. MEDIA DOWNLOAD LOGIC (WITH PREMIUM SPEED & CAPTION)
+        # 3. MEDIA DOWNLOAD LOGIC
         # ---------------------------------------------
         url = text
 
-        if not (url.startswith("http://") or url.startswith("https://")):
+        if not (
+            url.startswith("http://")
+            or url.startswith("https://")
+        ):
             await update.message.reply_text(
                 texts["invalid"],
-                reply_markup=await self.get_main_keyboard(user.id),
+                reply_markup=await self.get_main_keyboard(
+                    user.id
+                ),
             )
             return
 
@@ -699,19 +1131,35 @@ class ManagedBotHandler:
                 user.full_name or "",
             )
         except Exception:
-            logger.exception("Could not save bot user")
+            logger.exception(
+                "Could not save bot user"
+            )
 
-        context.user_data["last_url"] = url
+        context.user_data[
+            "last_url"
+        ] = url
 
         status_msg = None
-        file_path = None
+        file_paths = []
 
-        # Check if Bot is Premium for priority speed and custom settings
-        is_prem = await db.is_bot_premium(self.bot_id)
-        settings = await db.get_bot_premium_settings(self.bot_id) if is_prem else {}
+        is_prem = await db.is_bot_premium(
+            self.bot_id
+        )
+
+        settings = (
+            await db.get_bot_premium_settings(
+                self.bot_id
+            )
+            if is_prem
+            else {}
+        )
 
         try:
-            status_msg = await update.message.reply_text(texts["downloading"])
+            status_msg = (
+                await update.message.reply_text(
+                    texts["downloading"]
+                )
+            )
 
             logger.info(
                 "Starting download bot=%s user=%s url=%s premium=%s",
@@ -721,7 +1169,6 @@ class ManagedBotHandler:
                 is_prem,
             )
 
-            # Pass premium=is_prem for high-speed priority processing
             result = await downloader.download(
                 url=url,
                 user_id=user.id,
@@ -737,35 +1184,107 @@ class ManagedBotHandler:
                 )[:3000]
 
                 await status_msg.edit_text(
-                    f"{texts['error']}\n\n{error_text}",
-                    reply_markup=await self.get_main_keyboard(user.id),
+                    f"{texts['error']}\n\n"
+                    f"{error_text}",
+                    reply_markup=await self.get_main_keyboard(
+                        user.id
+                    ),
                 )
                 return
 
-            file_path = result.get("file_path")
+            file_paths = [
+                path
+                for path in (
+                    result.get("file_paths")
+                    or [result.get("file_path")]
+                )
+                if path
+                and os.path.isfile(path)
+            ]
 
-            if not file_path or not os.path.isfile(file_path):
+            if not file_paths:
                 await status_msg.edit_text(
                     "❌ Download completed but output file was not found.",
-                    reply_markup=await self.get_main_keyboard(user.id),
+                    reply_markup=await self.get_main_keyboard(
+                        user.id
+                    ),
                 )
                 return
 
-            title = str(result.get("title", "Downloaded Media"))
-            platform = result.get("platform", "general")
-            media_type = result.get("media_type", "video")
+            title = str(
+                result.get(
+                    "title",
+                    "Downloaded Media",
+                )
+            )
 
-            # Custom Caption support for Premium bots
-            custom_caption = settings.get("caption") if is_prem else None
+            platform = result.get(
+                "platform",
+                "general",
+            )
+
+            media_type = result.get(
+                "media_type",
+                "video",
+            )
+
+            custom_caption = (
+                settings.get("caption")
+                if is_prem
+                else None
+            )
 
             # ---------------------------------------------
-            # SHOW CHAT ACTION ("sending a video/photo/audio")
+            # PHOTO / TIKTOK SLIDESHOW
             # ---------------------------------------------
-            if media_type == "audio":
-                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_AUDIO)
-                audio_caption = custom_caption if custom_caption else f"🎵 {title[:900]}"
-                audio_markup = await self.get_custom_keyboard(is_prem, None)
-                with open(file_path, "rb") as audio:
+            if (
+                media_type == "photo"
+                or all(
+                    self._is_photo_file(path)
+                    for path in file_paths
+                )
+            ):
+                await context.bot.send_chat_action(
+                    chat_id=user.id,
+                    action=ChatAction.UPLOAD_PHOTO,
+                )
+
+                await self._send_photo_files(
+                    update=update,
+                    paths=file_paths,
+                    title=title,
+                    is_prem=is_prem,
+                    custom_caption=custom_caption,
+                )
+
+            # ---------------------------------------------
+            # AUDIO
+            # ---------------------------------------------
+            elif media_type == "audio":
+                file_path = file_paths[0]
+
+                await context.bot.send_chat_action(
+                    chat_id=user.id,
+                    action=ChatAction.UPLOAD_AUDIO,
+                )
+
+                audio_caption = (
+                    custom_caption
+                    if custom_caption
+                    else f"🎵 {title[:900]}"
+                )
+
+                audio_markup = (
+                    await self.get_custom_keyboard(
+                        is_prem,
+                        None,
+                    )
+                )
+
+                with open(
+                    file_path,
+                    "rb",
+                ) as audio:
                     await update.message.reply_audio(
                         audio=audio,
                         title=title[:64],
@@ -774,28 +1293,52 @@ class ManagedBotHandler:
                         reply_markup=audio_markup,
                     )
 
-            elif media_type == "photo":
-                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_PHOTO)
-                photo_caption = custom_caption if custom_caption else f"✅ {title[:900]}"
-                photo_markup = await self.get_custom_keyboard(is_prem, None)
-                with open(file_path, "rb") as photo:
-                    await update.message.reply_photo(
-                        photo=photo,
-                        caption=photo_caption,
-                        reply_markup=photo_markup,
+            # ---------------------------------------------
+            # VIDEO
+            # ---------------------------------------------
+            else:
+                # A normal single video is expected.
+                # If a downloader returns multiple video files,
+                # send them one by one instead of silently losing them.
+                video_paths = [
+                    path
+                    for path in file_paths
+                    if self._is_video_file(path)
+                ] or file_paths[:1]
+
+                for index, file_path in enumerate(
+                    video_paths
+                ):
+                    await context.bot.send_chat_action(
+                        chat_id=user.id,
+                        action=ChatAction.UPLOAD_VIDEO,
                     )
 
-            else:
-                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_VIDEO)
-                video_caption = custom_caption if custom_caption else f"✅ {title[:900]}"
-                reply_markup = await self.get_custom_keyboard(is_prem, self.video_music_keyboard())
-                with open(file_path, "rb") as video:
-                    await update.message.reply_video(
-                        video=video,
-                        caption=video_caption,
-                        supports_streaming=True,
-                        reply_markup=reply_markup,
+                    video_caption = (
+                        custom_caption
+                        if custom_caption
+                        else f"✅ {title[:900]}"
                     )
+
+                    reply_markup = (
+                        await self.get_custom_keyboard(
+                            is_prem,
+                            self.video_music_keyboard()
+                            if index == 0
+                            else None,
+                        )
+                    )
+
+                    with open(
+                        file_path,
+                        "rb",
+                    ) as video:
+                        await update.message.reply_video(
+                            video=video,
+                            caption=video_caption,
+                            supports_streaming=True,
+                            reply_markup=reply_markup,
+                        )
 
             try:
                 await db.log_download(
@@ -805,7 +1348,9 @@ class ManagedBotHandler:
                     media_type,
                 )
             except Exception:
-                logger.exception("Could not log download")
+                logger.exception(
+                    "Could not log download"
+                )
 
             try:
                 await status_msg.delete()
@@ -813,25 +1358,35 @@ class ManagedBotHandler:
                 pass
 
         except Exception as exc:
-            logger.exception("Managed bot download error")
+            logger.exception(
+                "Managed bot download error"
+            )
+
             if status_msg:
                 try:
                     await status_msg.edit_text(
-                        f"❌ Error:\n\n{str(exc)[:1500]}",
-                        reply_markup=await self.get_main_keyboard(user.id),
+                        f"❌ Error:\n\n"
+                        f"{str(exc)[:1500]}",
+                        reply_markup=await self.get_main_keyboard(
+                            user.id
+                        ),
                     )
                 except Exception:
                     pass
 
         finally:
-            if file_path:
+            if file_paths:
                 try:
-                    downloader.cleanup(file_path)
+                    downloader.cleanup(
+                        file_paths
+                    )
                 except Exception:
-                    logger.exception("Cleanup failed")
+                    logger.exception(
+                        "Cleanup failed"
+                    )
 
     # =====================================================
-    # MUSIC FAST CONVERT BUTTON (CALLBACK)
+    # MUSIC FAST CONVERT BUTTON
     # =====================================================
 
     async def convert_music(
@@ -840,20 +1395,31 @@ class ManagedBotHandler:
         context,
     ):
         user = query.from_user
-        lang = await self.get_language(user.id)
+        lang = await self.get_language(
+            user.id
+        )
         texts = LANGUAGES[lang]
 
-        url = context.user_data.get("last_url")
+        url = context.user_data.get(
+            "last_url"
+        )
 
         if not url:
-            await query.message.reply_text("❌ URL Not Found.")
+            await query.message.reply_text(
+                "❌ URL Not Found."
+            )
             return
 
-        status_msg = await query.message.reply_text(texts["music_downloading"])
-        file_path = None
+        status_msg = await query.message.reply_text(
+            texts["music_downloading"]
+        )
+
+        file_paths = []
         mp3_path = None
 
-        is_prem = await db.is_bot_premium(self.bot_id)
+        is_prem = await db.is_bot_premium(
+            self.bot_id
+        )
 
         try:
             result = await downloader.download(
@@ -863,59 +1429,150 @@ class ManagedBotHandler:
             )
 
             if not result.get("success"):
-                error_text = str(result.get("error", "Failed to download media"))[:3000]
-                await status_msg.edit_text(f"{texts['error']}\n\n{error_text}")
+                error_text = str(
+                    result.get(
+                        "error",
+                        "Failed to download media",
+                    )
+                )[:3000]
+
+                await status_msg.edit_text(
+                    f"{texts['error']}\n\n"
+                    f"{error_text}"
+                )
                 return
 
-            file_path = result.get("file_path")
-
-            if file_path and os.path.isfile(file_path):
-                title = str(result.get("title", "Audio Track"))
-
-                # Video to MP3 conversion using FFmpeg
-                mp3_path = os.path.splitext(file_path)[0] + ".mp3"
-                
-                proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y", "-i", file_path, "-vn", "-acodec", "libmp3lame", mp3_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+            file_paths = [
+                path
+                for path in (
+                    result.get("file_paths")
+                    or [result.get("file_path")]
                 )
-                await proc.communicate()
+                if path
+                and os.path.isfile(path)
+            ]
 
-                target_file = mp3_path if os.path.exists(mp3_path) else file_path
+            if not file_paths:
+                await status_msg.edit_text(
+                    "❌ File not found."
+                )
+                return
 
-                # Show status action: "sending audio"
-                await context.bot.send_chat_action(chat_id=user.id, action=ChatAction.UPLOAD_AUDIO)
+            # MUSIC is intended for video/audio media.
+            source_path = next(
+                (
+                    path
+                    for path in file_paths
+                    if self._is_video_file(path)
+                ),
+                file_paths[0],
+            )
 
-                audio_markup = await self.get_custom_keyboard(is_prem, None)
-                with open(target_file, "rb") as audio:
-                    await query.message.reply_audio(
-                        audio=audio,
-                        title=title[:64],
-                        performer="TG-Power",
-                        caption=f"🎵 {title[:900]}",
-                        reply_markup=audio_markup,
-                    )
+            title = str(
+                result.get(
+                    "title",
+                    "Audio Track",
+                )
+            )
+
+            mp3_path = (
+                os.path.splitext(
+                    source_path
+                )[0]
+                + ".mp3"
+            )
+
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-y",
+                "-i",
+                source_path,
+                "-vn",
+                "-acodec",
+                "libmp3lame",
+                "-b:a",
+                "192k",
+                mp3_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            _, stderr = await proc.communicate()
+
+            if (
+                proc.returncode != 0
+                or not os.path.exists(mp3_path)
+            ):
+                error_detail = (
+                    stderr.decode(
+                        "utf-8",
+                        errors="ignore",
+                    )[-800:]
+                    if stderr
+                    else "FFmpeg conversion failed."
+                )
+
+                raise RuntimeError(
+                    error_detail
+                )
+
+            await context.bot.send_chat_action(
+                chat_id=user.id,
+                action=ChatAction.UPLOAD_AUDIO,
+            )
+
+            audio_markup = (
+                await self.get_custom_keyboard(
+                    is_prem,
+                    None,
+                )
+            )
+
+            with open(
+                mp3_path,
+                "rb",
+            ) as audio:
+                await query.message.reply_audio(
+                    audio=audio,
+                    title=title[:64],
+                    performer="TG-Power",
+                    caption=f"🎵 {title[:900]}",
+                    reply_markup=audio_markup,
+                )
+
+            try:
                 await status_msg.delete()
-            else:
-                await status_msg.edit_text("❌ File not found.")
+            except Exception:
+                pass
 
         except Exception as exc:
-            logger.exception("Music conversion error")
+            logger.exception(
+                "Music conversion error"
+            )
+
             if status_msg:
                 try:
-                    await status_msg.edit_text(f"{texts['error']}\n\n{str(exc)[:1500]}")
+                    await status_msg.edit_text(
+                        f"{texts['error']}\n\n"
+                        f"{str(exc)[:1500]}"
+                    )
                 except Exception:
                     pass
+
         finally:
-            if file_path:
-                try:
-                    downloader.cleanup(file_path)
-                except Exception:
-                    pass
-            if mp3_path and os.path.exists(mp3_path):
+            if mp3_path and os.path.exists(
+                mp3_path
+            ):
                 try:
                     os.remove(mp3_path)
+                except Exception:
+                    pass
+
+            if file_paths:
+                try:
+                    downloader.cleanup(
+                        file_paths
+                    )
                 except Exception:
                     pass
 
@@ -939,8 +1596,13 @@ class ManagedBotHandler:
             data = query.data or ""
             user_id = query.from_user.id
 
-            if data.startswith("msetlang_"):
-                lang_code = data.split("_", 1)[1]
+            if data.startswith(
+                "msetlang_"
+            ):
+                lang_code = data.split(
+                    "_",
+                    1,
+                )[1]
 
                 if lang_code not in LANGUAGES:
                     lang_code = "en"
@@ -956,22 +1618,31 @@ class ManagedBotHandler:
                 except Exception:
                     pass
 
-                texts = LANGUAGES[lang_code]
-                main_kbd = await self.get_main_keyboard(user_id)
+                texts = LANGUAGES[
+                    lang_code
+                ]
 
                 await context.bot.send_message(
                     chat_id=user_id,
                     text=texts["welcome"],
-                    reply_markup=main_kbd,
+                    reply_markup=await self.get_main_keyboard(
+                        user_id
+                    ),
                 )
                 return
 
             if data == "convert_music":
-                await self.convert_music(query, context)
+                await self.convert_music(
+                    query,
+                    context,
+                )
                 return
 
         except Exception:
-            logger.exception("Callback error for bot %s", self.bot_id)
+            logger.exception(
+                "Callback error for bot %s",
+                self.bot_id,
+            )
 
     # =====================================================
     # COMMAND HANDLERS
@@ -982,41 +1653,61 @@ class ManagedBotHandler:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ):
-        if not update.message or not update.effective_user:
+        if (
+            not update.message
+            or not update.effective_user
+        ):
             return
 
         user_id = update.effective_user.id
 
-        if not await self.is_owner(user_id):
+        if not await self.is_owner(
+            user_id
+        ):
             return
 
-        await self.send_stats_msg(update, user_id)
+        await self.send_stats_msg(
+            update,
+            user_id,
+        )
 
     async def broadcast_command(
         self,
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ):
-        if not update.message or not update.effective_user:
+        if (
+            not update.message
+            or not update.effective_user
+        ):
             return
 
         user_id = update.effective_user.id
 
-        if not await self.is_owner(user_id):
+        if not await self.is_owner(
+            user_id
+        ):
             return
 
-        lang = await self.get_language(user_id)
+        lang = await self.get_language(
+            user_id
+        )
         texts = LANGUAGES[lang]
 
-        context.user_data["broadcast_mode"] = True
+        context.user_data[
+            "broadcast_mode"
+        ] = True
 
         await update.message.reply_text(
-            texts.get("broadcast_prompt", "📢 **BROADCAST MODE**"),
+            texts.get(
+                "broadcast_prompt",
+                "📢 **BROADCAST MODE**",
+            ),
             parse_mode="Markdown",
         )
 
     # =====================================================
-    # BROADCAST MEDIA HANDLER (PHOTO / VIDEO)
+    # BROADCAST MEDIA HANDLER
     # =====================================================
 
     async def handle_broadcast_media(
@@ -1024,19 +1715,31 @@ class ManagedBotHandler:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ):
-        if not update.message or not update.effective_user:
+        if (
+            not update.message
+            or not update.effective_user
+        ):
             return
 
         user_id = update.effective_user.id
 
-        if not context.user_data.get("broadcast_mode"):
+        if not context.user_data.get(
+            "broadcast_mode"
+        ):
             return
 
-        if not await self.is_owner(user_id):
-            context.user_data["broadcast_mode"] = False
+        if not await self.is_owner(
+            user_id
+        ):
+            context.user_data[
+                "broadcast_mode"
+            ] = False
             return
 
-        await self.execute_broadcast(update, context)
+        await self.execute_broadcast(
+            update,
+            context,
+        )
 
     # =====================================================
     # ERROR HANDLER
@@ -1052,4 +1755,18 @@ class ManagedBotHandler:
             self.bot_id,
             context.error,
             exc_info=context.error,
+        )
+
+
+async def context_message_reply_photo(
+    update: Update,
+    path: str,
+    caption: str,
+    reply_markup=None,
+):
+    with open(path, "rb") as photo:
+        await update.message.reply_photo(
+            photo=photo,
+            caption=caption,
+            reply_markup=reply_markup,
         )
