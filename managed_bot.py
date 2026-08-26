@@ -1263,11 +1263,6 @@ class ManagedBotHandler:
             elif media_type == "audio":
                 file_path = file_paths[0]
 
-                await context.bot.send_chat_action(
-                    chat_id=user.id,
-                    action=ChatAction.UPLOAD_AUDIO,
-                )
-
                 audio_caption = (
                     custom_caption
                     if custom_caption
@@ -1515,11 +1510,6 @@ class ManagedBotHandler:
                 raise RuntimeError(
                     error_detail
                 )
-
-            await context.bot.send_chat_action(
-                chat_id=user.id,
-                action=ChatAction.UPLOAD_AUDIO,
-            )
 
             audio_markup = (
                 await self.get_custom_keyboard(
