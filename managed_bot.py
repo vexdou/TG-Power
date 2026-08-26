@@ -904,14 +904,18 @@ class ManagedBotHandler:
                         "start_message"
                     ] = text
 
-                    if hasattr(
-                        db,
-                        "update_bot_premium_settings",
-                    ):
+                    if hasattr(db, "update_bot_premium_settings"):
                         await db.update_bot_premium_settings(
                             self.bot_id,
                             settings,
                         )
+                    else:
+                        for _key, _value in settings.items():
+                            await db.set_bot_premium_setting(
+                                self.bot_id,
+                                _key,
+                                _value,
+                            )
 
                     await update.message.reply_text(
                         "✅ Fariinta /start waxaa loo badalay si guul leh!",
@@ -979,14 +983,18 @@ class ManagedBotHandler:
                         new_buttons[:10]
                     )
 
-                    if hasattr(
-                        db,
-                        "update_bot_premium_settings",
-                    ):
+                    if hasattr(db, "update_bot_premium_settings"):
                         await db.update_bot_premium_settings(
                             self.bot_id,
                             settings,
                         )
+                    else:
+                        for _key, _value in settings.items():
+                            await db.set_bot_premium_setting(
+                                self.bot_id,
+                                _key,
+                                _value,
+                            )
 
                     await update.message.reply_text(
                         "✅ Si guul leh ayaa loo keydiyay "
@@ -1263,6 +1271,11 @@ class ManagedBotHandler:
             elif media_type == "audio":
                 file_path = file_paths[0]
 
+                await context.bot.send_chat_action(
+                    chat_id=user.id,
+                    action=ChatAction.UPLOAD_AUDIO,
+                )
+
                 audio_caption = (
                     custom_caption
                     if custom_caption
@@ -1510,6 +1523,11 @@ class ManagedBotHandler:
                 raise RuntimeError(
                     error_detail
                 )
+
+            await context.bot.send_chat_action(
+                chat_id=user.id,
+                action=ChatAction.UPLOAD_AUDIO,
+            )
 
             audio_markup = (
                 await self.get_custom_keyboard(
